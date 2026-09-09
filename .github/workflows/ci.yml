@@ -1,0 +1,67 @@
+name: CI Backend
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests et qualite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: maboko_test
+          POSTGRES_USER: maboko
+          POSTGRES_PASSWORD: maboko
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pdo_sqlite, mbstring, bcmath
+          coverage: none
+
+      - name: Installer les dependances
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Preparer l'environnement
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Verifier le style de code
+        run: ./vendor/bin/pint --test
+
+      - name: Analyse statique
+        run: ./vendor/bin/phpstan analyse --no-progress
+        continue-on-error: true
+
+      # Garde-fou : les migrations doivent aboutir sur une base reellement vierge.
+      # C'est precisement ce qui etait casse avant la phase 0.
+      - name: Migrations sur base vierge
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: maboko_test
+          DB_USERNAME: maboko
+          DB_PASSWORD: maboko
+          CACHE_STORE: array
+        run: php artisan migrate:fresh --seed --force
+
+      - name: Tests
+        run: php artisan test

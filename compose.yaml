@@ -1,0 +1,58 @@
+# Environnement de developpement Maboko.
+# Demarrage : docker compose up -d
+#
+# Le cahier de charges (§6.2) prevoit PostgreSQL et Redis ; ce fichier les
+# fournit sans rien installer sur le poste.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: maboko-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-maboko}
+      POSTGRES_USER: ${DB_USERNAME:-maboko}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-maboko}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-maboko} -d ${DB_DATABASE:-maboko}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: maboko-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Stockage objet compatible S3, pour les photos de portfolio et du fil.
+  minio:
+    image: minio/minio:latest
+    container_name: maboko-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-maboko}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-mabokosecret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
