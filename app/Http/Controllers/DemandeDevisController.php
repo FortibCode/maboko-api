@@ -9,6 +9,8 @@ use App\Models\DemandeDevis;
 use App\Models\Metier;
 use App\Services\ClassementArtisan;
 use App\Services\MediaService;
+use App\Services\MoteurBadges;
+use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,6 +28,8 @@ class DemandeDevisController extends Controller
     public function __construct(
         private MediaService $media,
         private ClassementArtisan $classement,
+        private MoteurBadges $badges,
+        private ServiceNotification $notifications,
     ) {}
 
     /**
@@ -115,6 +119,19 @@ class DemandeDevisController extends Controller
             return $demande;
         });
 
+        // Une mission qui n'arrive pas est une mission perdue : c'est
+        // exactement le cas où le repli SMS du §7.2 se justifie.
+        // La fiche artisan porte toujours un utilisateur (clé étrangère
+        // obligatoire et contrainte).
+        $this->notifications->notifier(
+            $artisan->utilisateur,
+            'Nouvelle demande de devis',
+            $demande->titre.' — '.$demande->adresse,
+            type: 'demande_recue',
+            donnees: ['demande_id' => $demande->id],
+            important: true,
+        );
+
         return response()->json([
             'message' => 'Demande envoyée à l’artisan.',
             'demande' => new DemandeDevisResource($demande->load(['photos', 'metier'])),
@@ -136,6 +153,13 @@ class DemandeDevisController extends Controller
             'acceptee_at' => now(),
         ]);
 
+        $this->prevenirClient(
+            $demande,
+            'Votre demande a été acceptée',
+            $demande->titre.' — devis proposé : '.number_format((float) $donnees['montant_propose'], 0, ',', ' ').' FCFA',
+            important: true,
+        );
+
         return $this->reponse($demande, 'Mission acceptée.');
     }
 
@@ -151,6 +175,8 @@ class DemandeDevisController extends Controller
             'statut' => DemandeDevis::STATUT_REFUSEE,
             'motif_refus' => $donnees['motif_refus'] ?? null,
         ]);
+
+        $this->prevenirClient($demande, 'Votre demande a été refusée', $demande->titre);
 
         return $this->reponse($demande, 'Mission refusée.');
     }
@@ -178,10 +204,17 @@ class DemandeDevisController extends Controller
             'terminee_at' => now(),
         ]);
 
-        // Le compteur de missions terminees alimente les badges et le classement.
-        if ($artisan = $demande->artisan) {
-            $this->classement->recalculer($artisan);
-        }
+        // Le compteur de missions terminées alimente les badges et le classement.
+        $artisan = $demande->artisan;
+        $this->classement->recalculer($artisan);
+        $this->badges->reevaluer($artisan->fresh(['badges', 'abonnementActif.plan']));
+
+        $this->prevenirClient(
+            $demande,
+            'Intervention terminée',
+            'Vous pouvez maintenant noter '.($demande->artisan->utilisateur->nom ?? 'votre artisan').'.',
+            important: true,
+        );
 
         return $this->reponse($demande, 'Intervention terminée. Le client peut maintenant vous noter.');
     }
@@ -208,5 +241,28 @@ class DemandeDevisController extends Controller
             'message' => $message,
             'demande' => new DemandeDevisResource($demande->fresh(['photos', 'metier'])),
         ]);
+    }
+
+    /**
+     * Prévient le client de l'évolution de sa demande.
+     * L'acceptation et la clôture sont importantes : elles appellent une
+     * action de sa part, et déclenchent donc le repli SMS si le push échoue.
+     */
+    private function prevenirClient(DemandeDevis $demande, string $titre, string $corps, bool $important = false): void
+    {
+        $client = $demande->client;
+
+        if (! $client) {
+            return;
+        }
+
+        $this->notifications->notifier(
+            $client,
+            $titre,
+            $corps,
+            type: 'demande_'.$demande->statut,
+            donnees: ['demande_id' => $demande->id],
+            important: $important,
+        );
     }
 }

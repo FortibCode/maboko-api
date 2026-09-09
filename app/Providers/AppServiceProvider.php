@@ -3,9 +3,16 @@
 namespace App\Providers;
 
 use App\Models\Artisan;
+use App\Models\Conversation;
+use App\Models\Course;
 use App\Models\DemandeDevis;
 use App\Policies\ArtisanPolicy;
+use App\Policies\ConversationPolicy;
+use App\Policies\CoursePolicy;
 use App\Policies\DemandeDevisPolicy;
+use App\Services\Push\EnvoyeurPush;
+use App\Services\Push\FirebaseEnvoyeurPush;
+use App\Services\Push\LogEnvoyeurPush;
 use App\Services\Sms\LogSmsSender;
 use App\Services\Sms\SmsSender;
 use App\Services\Sms\TwilioSmsSender;
@@ -19,6 +26,13 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(EnvoyeurPush::class, function () {
+            return match (config('push.driver')) {
+                'firebase' => new FirebaseEnvoyeurPush,
+                default => new LogEnvoyeurPush,
+            };
+        });
+
         $this->app->bind(SmsSender::class, function () {
             return match (config('sms.driver')) {
                 'twilio' => new TwilioSmsSender,
@@ -37,6 +51,8 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::policy(DemandeDevis::class, DemandeDevisPolicy::class);
         Gate::policy(Artisan::class, ArtisanPolicy::class);
+        Gate::policy(Conversation::class, ConversationPolicy::class);
+        Gate::policy(Course::class, CoursePolicy::class);
     }
 
     /**

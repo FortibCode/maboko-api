@@ -16,6 +16,10 @@ use App\Models\DemandeDevis;
  */
 class ClassementArtisan
 {
+    /**
+     * Recalcule les indicateurs de réputation à partir des avis et des
+     * missions, puis le score. À appeler après un avis ou une mission close.
+     */
     public function recalculer(Artisan $artisan): void
     {
         $artisan->loadMissing(['badges', 'abonnementActif.plan']);
@@ -37,6 +41,28 @@ class ClassementArtisan
             'note_moyenne' => $noteMoyenne,
             'nb_missions_terminees' => $missionsTerminees,
             'score_classement' => $this->score($artisan, $noteMoyenne, $nbAvis, $missionsTerminees),
+        ]);
+    }
+
+    /**
+     * Recalcule le seul score de classement, sans toucher aux indicateurs
+     * de réputation.
+     *
+     * Un changement de badge ou de formule d'abonnement modifie la position
+     * dans la recherche, pas le nombre d'avis reçus : les recalculer au
+     * passage écraserait des valeurs qui ne sont pas en cause.
+     */
+    public function recalculerScore(Artisan $artisan): void
+    {
+        $artisan->loadMissing(['badges', 'abonnementActif.plan']);
+
+        $artisan->update([
+            'score_classement' => $this->score(
+                $artisan,
+                (float) $artisan->note_moyenne,
+                $artisan->nb_avis,
+                $artisan->nb_missions_terminees,
+            ),
         ]);
     }
 

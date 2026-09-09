@@ -182,6 +182,88 @@ fichiers sur le disque configuré.
 
 ---
 
+## Temps réel, notifications et paiements
+
+### Messagerie temps réel (Reverb)
+
+```bash
+php artisan reverb:start          # serveur WebSocket, port 8080
+```
+
+L'application mobile s'y connecte avec la clé fournie à la compilation :
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1 \
+  --dart-define=REVERB_HOST=10.0.2.2 \
+  --dart-define=REVERB_KEY=<REVERB_APP_KEY du .env>
+```
+
+Sans clé, l'application se rabat sur une interrogation périodique — utilisable,
+mais qui ne tient pas le seuil de 2 secondes du §7.2.
+
+Les canaux sont privés : `POST /api/v1/diffusion/auth` ne délivre une signature
+qu'aux participants de la conversation. Laravel place cette route sous le
+middleware `web`, qui suppose une session ; l'application mobile s'authentifiant
+par jeton, elle dispose de sa propre entrée sous `/api/v1`.
+
+### Notifications push
+
+| `PUSH_DRIVER` | Effet |
+|---|---|
+| `log` (défaut) | l'envoi part dans `storage/logs/laravel.log` |
+| `firebase` | envoi réel via FCM, API HTTP v1 |
+
+Le mode `firebase` demande `FIREBASE_PROJECT_ID` et `FIREBASE_CREDENTIALS`
+(chemin du fichier de compte de service).
+
+**Repli SMS (§7.2).** Quand le push échoue, un SMS prend le relais — mais
+uniquement pour les notifications importantes : une mission reçue, une demande
+acceptée, une intervention terminée. Un like ou un commentaire n'en déclenche
+pas : le SMS coûte trop cher pour ça.
+
+### Paiements Mobile Money
+
+| `PAIEMENT_MODE` | Effet |
+|---|---|
+| `simulation` (défaut) | aucun appel réseau, la transaction aboutit tout de suite |
+| `reel` | appelle les API Airtel Money et MTN MoMo |
+
+En simulation, un numéro terminant par `0` échoue volontairement, pour éprouver
+le traitement des refus sans dépendre de l'opérateur.
+
+> Les intégrations Airtel et MTN suivent la documentation publique mais **ne
+> sont pas éprouvées** : elles demandent un compte marchand, dont l'ouverture
+> prend quatre à huit semaines. Le format exact des notifications et les
+> identifiants sont à confirmer à la mise en service.
+
+**Notifications d'opérateur.** `POST /api/v1/webhooks/paiement/{operateur}` est
+public par nature : c'est la signature HMAC qui l'authentifie. Sans
+`AIRTEL_WEBHOOK_SECRET` ou `MTN_WEBHOOK_SECRET` configuré, aucune notification
+n'est acceptée — mieux vaut refuser un paiement légitime que d'en enregistrer un
+inventé. Le traitement est idempotent : les opérateurs réémettent volontiers la
+même notification, et un abonnement ne doit pas se prolonger à chaque
+répétition.
+
+### Tâches planifiées
+
+```bash
+php artisan schedule:work                              # en développement
+php artisan maboko:renouveler-abonnements --simulation # à blanc
+```
+
+En production, une seule entrée cron suffit :
+
+```
+* * * * * cd /chemin/du/projet && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Elle déclenche la facturation récurrente (relance 3 jours avant l'échéance,
+prélèvement, puis clôture des impayés après 3 jours de grâce) et la purge des
+stories expirées.
+
+---
+
 ## Conventions
 
 - Toutes les routes sont préfixées `/api/v1`.

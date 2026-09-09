@@ -6,11 +6,24 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Paiement Mobile Money ou carte (§6.2).
  * Le payload brut de l'operateur est conserve : sans lui, aucune
  * reconciliation n'est possible en cas de litige.
+ */
+/**
+ * @property int $id
+ * @property string $reference_interne
+ * @property string|null $reference_externe
+ * @property string $statut
+ * @property string $operateur
+ * @property string $devise
+ * @property string|null $motif_echec
+ * @property array<string, mixed>|null $payload
+ * @property Carbon|null $payee_at
+ * @property Carbon|null $created_at
  */
 class Transaction extends Model
 {

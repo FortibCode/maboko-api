@@ -2,11 +2,22 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $type
+ * @property int|null $demande_devis_id
+ * @property Carbon|null $dernier_message_at
+ * @property int|null $non_lus Ajouté par le withCount de la liste
+ * @property-read Collection<int, User> $participants
+ * @property-read Collection<int, Message> $messages
+ */
 class Conversation extends Model
 {
     public const TYPE_CLIENT_ARTISAN = 'client_artisan';
@@ -23,7 +34,7 @@ class Conversation extends Model
     public function participants(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'conversation_participants')
-            ->withPivot('lu_jusqu_a', 'muet')
+            ->withPivot('dernier_message_lu_id', 'muet')
             ->withTimestamps();
     }
 

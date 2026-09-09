@@ -21,7 +21,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $acceptee_at
  * @property Carbon|null $terminee_at
  * @property Carbon|null $created_at
- * @property-read Artisan|null $artisan
+ * @property-read Artisan $artisan
+ * @property-read User|null $client
  * @property-read Avis|null $avis
  */
 class DemandeDevis extends Model

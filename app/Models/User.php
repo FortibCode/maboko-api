@@ -58,6 +58,7 @@ class User extends Authenticatable
         'avatar_url',
         'ville',
         'quartier',
+        'derniere_connexion_at',
     ];
 
     protected $hidden = [
@@ -159,7 +160,7 @@ class User extends Authenticatable
     public function conversations(): BelongsToMany
     {
         return $this->belongsToMany(Conversation::class, 'conversation_participants')
-            ->withPivot('lu_jusqu_a', 'muet')
+            ->withPivot('dernier_message_lu_id', 'muet')
             ->withTimestamps();
     }
 

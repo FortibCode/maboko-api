@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property string $nom
  * @property string|null $slug
  * @property int $poids_classement
+ * @property bool $automatique
+ * @property array<string, mixed>|null $regle_attribution
  * @property-read ArtisanBadge $pivot
  */
 class Badge extends Model

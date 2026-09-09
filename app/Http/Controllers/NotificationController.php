@@ -9,32 +9,53 @@ use Illuminate\Http\Request;
 class NotificationController extends Controller
 {
     /**
-     * Notifications du destinataire connecte.
+     * Notifications du destinataire connecté.
      *
-     * L'identifiant etait auparavant lu dans l'URL, ce qui permettait a
-     * n'importe quel compte authentifie de consulter les notifications
-     * d'un autre. Il est desormais deduit du jeton d'authentification.
+     * L'identifiant était auparavant lu dans l'URL, ce qui permettait à
+     * n'importe quel compte authentifié de consulter celles d'un autre.
      */
     public function index(Request $request): JsonResponse
     {
         $notifications = Notification::where('artisan_id', $request->user()->id)
             ->latest()
-            ->paginate(30);
+            ->cursorPaginate(30);
 
-        return response()->json($notifications);
-    }
-
-    public function store(Request $request): JsonResponse
-    {
-        $donnees = $request->validate([
-            'artisan_id' => 'required|exists:users,id',
-            'title' => 'required|string|max:255',
-            'body' => 'required|string|max:1000',
+        $notifications->through(fn (Notification $n) => [
+            'id' => $n->id,
+            'titre' => $n->title,
+            'corps' => $n->body,
+            'type' => $n->type,
+            'donnees' => $n->donnees ?? [],
+            'lue' => $n->lu_at !== null,
+            'recueLe' => $n->created_at?->toIso8601String(),
         ]);
 
         return response()->json([
-            'message' => 'Notification creee.',
-            'notification' => Notification::create($donnees),
-        ], 201);
+            'data' => $notifications->items(),
+            'nonLues' => Notification::where('artisan_id', $request->user()->id)
+                ->whereNull('lu_at')
+                ->count(),
+            'next_cursor' => $notifications->nextCursor()?->encode(),
+        ]);
+    }
+
+    public function marquerLue(Request $request, Notification $notification): JsonResponse
+    {
+        if ($notification->artisan_id !== $request->user()->id) {
+            return response()->json(['message' => 'Accès refusé.'], 403);
+        }
+
+        $notification->update(['lu_at' => now()]);
+
+        return response()->json(['message' => 'Notification lue.']);
+    }
+
+    public function toutMarquerLu(Request $request): JsonResponse
+    {
+        Notification::where('artisan_id', $request->user()->id)
+            ->whereNull('lu_at')
+            ->update(['lu_at' => now()]);
+
+        return response()->json(['message' => 'Toutes les notifications sont lues.']);
     }
 }

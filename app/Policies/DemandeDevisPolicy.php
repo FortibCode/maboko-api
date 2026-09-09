@@ -68,6 +68,6 @@ class DemandeDevisPolicy
 
     private function estArtisan(User $user, DemandeDevis $demande): bool
     {
-        return $demande->artisan?->utilisateur_id === $user->id;
+        return $demande->artisan->utilisateur_id === $user->id;
     }
 }

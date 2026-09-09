@@ -12,12 +12,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
  * @property int $utilisateur_id
  * @property string|null $bio
  * @property string $statut_validation
+ * @property int $nb_avis
+ * @property int $nb_missions_terminees
+ * @property bool $local_professionnel
+ * @property Carbon|null $created_at
  * @property float|null $distance_km Calculee par le scope aProximite()
  * @property-read Abonnement|null $abonnementActif
  * @property-read Collection<int, Badge> $badges

@@ -26,6 +26,23 @@ class MediaService
     ];
 
     /**
+     * Enregistre une pièce d'identité sur le disque privé (§7.1).
+     *
+     * Retourne le chemin, jamais une URL : ces documents ne sont servis
+     * qu'à l'administration, par lien signé et temporaire.
+     */
+    public function enregistrerPiecePrivee(string $valeur, string $dossier): string
+    {
+        [$binaire, $extension] = $this->decoder($valeur);
+
+        $chemin = $dossier.'/'.Str::uuid().'.'.$extension;
+
+        Storage::disk('local')->put($chemin, $binaire);
+
+        return $chemin;
+    }
+
+    /**
      * Accepte soit une URL deja hebergee, soit une image encodee en base64
      * sous la forme « data:image/jpeg;base64,... ». Retourne l'URL publique.
      */
@@ -35,32 +52,43 @@ class MediaService
             return $valeur;
         }
 
+        [$binaire, $extension] = $this->decoder($valeur);
+
+        $chemin = $dossier.'/'.Str::uuid().'.'.$extension;
+
+        Storage::disk($this->disque())->put($chemin, $binaire);
+
+        return Storage::disk($this->disque())->url($chemin);
+    }
+
+    /**
+     * Décode une image base64 et vérifie son format et son poids.
+     *
+     * @return array{0: string, 1: string} binaire et extension
+     */
+    private function decoder(string $valeur): array
+    {
         if (! preg_match('#^data:(image/[a-z+]+);base64,(.+)$#i', $valeur, $morceaux)) {
             throw new RuntimeException("Format d'image non reconnu.");
         }
 
-        [$_, $typeMime, $charge] = $morceaux;
-        $typeMime = mb_strtolower($typeMime);
+        $typeMime = mb_strtolower($morceaux[1]);
 
         if (! isset(self::TYPES_AUTORISES[$typeMime])) {
-            throw new RuntimeException('Format accepte : JPEG, PNG ou WebP.');
+            throw new RuntimeException('Format accepté : JPEG, PNG ou WebP.');
         }
 
-        $binaire = base64_decode($charge, true);
+        $binaire = base64_decode($morceaux[2], true);
 
         if ($binaire === false) {
-            throw new RuntimeException("L'image n'a pas pu etre lue.");
+            throw new RuntimeException("L'image n'a pas pu être lue.");
         }
 
         if (strlen($binaire) > self::TAILLE_MAX) {
             throw new RuntimeException('Image trop lourde : 5 Mo maximum.');
         }
 
-        $chemin = $dossier.'/'.Str::uuid().'.'.self::TYPES_AUTORISES[$typeMime];
-
-        Storage::disk($this->disque())->put($chemin, $binaire);
-
-        return Storage::disk($this->disque())->url($chemin);
+        return [$binaire, self::TYPES_AUTORISES[$typeMime]];
     }
 
     private function disque(): string

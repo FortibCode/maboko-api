@@ -4,9 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Formules d'abonnement (§4.5) : gratuit, pro, premium, entreprise.
+ */
+/**
+ * @property int $id
+ * @property string $slug
+ * @property string $nom
+ * @property array<int, string>|null $avantages
+ * @property Carbon|null $created_at
  */
 class Plan extends Model
 {

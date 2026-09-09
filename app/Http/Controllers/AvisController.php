@@ -7,6 +7,7 @@ use App\Http\Resources\AvisResource;
 use App\Models\Avis;
 use App\Models\DemandeDevis;
 use App\Services\ClassementArtisan;
+use App\Services\MoteurBadges;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,7 +17,10 @@ use Illuminate\Http\Request;
  */
 class AvisController extends Controller
 {
-    public function __construct(private ClassementArtisan $classement) {}
+    public function __construct(
+        private ClassementArtisan $classement,
+        private MoteurBadges $badges,
+    ) {}
 
     /**
      * Noter une intervention terminee. Un avis est adosse a une demande de
@@ -43,9 +47,12 @@ class AvisController extends Controller
 
         // La note moyenne et le classement de l'artisan sont recalcules
         // immediatement : c'est ce qui fait remonter les bons profils.
-        if ($artisan = $demande->artisan) {
-            $this->classement->recalculer($artisan);
-        }
+        // La note moyenne et le classement de l'artisan sont recalculés
+        // immédiatement : c'est ce qui fait remonter les bons profils.
+        $artisan = $demande->artisan;
+        $this->classement->recalculer($artisan);
+        // Un nouvel avis peut débloquer « Confirmé » ou « Recommandé ».
+        $this->badges->reevaluer($artisan->fresh(['badges', 'abonnementActif.plan']));
 
         return response()->json([
             'message' => 'Merci, votre avis est publié.',

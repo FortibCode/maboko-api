@@ -9,6 +9,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * @property int $id
+ * @property int $utilisateur_id
+ * @property string $type_vehicule
+ * @property string $vehicule_modele
+ * @property string $plaque_immatriculation
+ * @property bool $en_ligne
+ * @property bool $disponibilite
+ * @property string $statut_validation
+ * @property int $nb_courses_terminees
+ * @property float|null $distance_km Calculée par l'appariement
+ * @property-read User $utilisateur
+ * @property-read PositionChauffeur|null $dernierePosition
+ */
 class Chauffeur extends Model
 {
     use HasFactory;
