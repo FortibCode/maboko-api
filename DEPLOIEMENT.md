@@ -71,6 +71,18 @@ alors que rien n'est parti.
 
 Le canal `log` reste accepté en local et dans les tests, jamais ailleurs.
 
+### Essayer l'inscription sans passerelle
+
+`OTP_NUMEROS_TEST` déclare une liste de numéros — les vôtres — pour lesquels
+aucun SMS n'est tenté et le code revient directement dans la réponse HTTP :
+
+```
+OTP_NUMEROS_TEST=+242060000001,+242066123456
+```
+
+Tout autre numéro continue d'exiger une vraie passerelle. C'est la manière sûre
+de tester tant que Twilio n'est pas branché.
+
 **N'activez pas `OTP_EXPOSE_IN_RESPONSE` en production.** Ce drapeau renvoie le
 code dans la réponse HTTP : il supprime purement et simplement la vérification
 par téléphone, et permet de créer un compte avec le numéro d'un tiers ou de

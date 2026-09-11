@@ -57,4 +57,61 @@ class PasserelleSmsTest extends TestCase
             ->assertStatus(503)
             ->assertJsonPath('code', 'passerelle_sms_absente');
     }
+
+    public function test_un_numero_de_test_recoit_son_code_dans_la_reponse(): void
+    {
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => ['+242061234567'],
+        ]);
+
+        $this->postJson('/api/v1/send-register-otp', $this->inscription())
+            ->assertOk()
+            ->assertJsonStructure(['message', 'debug_code']);
+    }
+
+    public function test_le_code_d_un_numero_de_test_ouvre_bien_le_compte(): void
+    {
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => ['+242061234567'],
+        ]);
+
+        $code = $this->postJson('/api/v1/send-register-otp', $this->inscription())
+            ->assertOk()
+            ->json('debug_code');
+
+        $this->postJson('/api/v1/verify-register-otp', [
+            'telephone' => '+242061234567',
+            'code' => $code,
+        ])->assertCreated()->assertJsonStructure(['token', 'user']);
+
+        $this->assertDatabaseHas('users', ['telephone' => '+242061234567']);
+    }
+
+    public function test_les_autres_numeros_restent_refuses(): void
+    {
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => ['+242061234567'],
+        ]);
+
+        // Un numero qui n'est pas dans la liste ne doit pas profiter de la
+        // porte ouverte aux numeros de test.
+        $this->postJson('/api/v1/send-register-otp', $this->inscription([
+            'telephone' => '+242069999999',
+        ]))->assertStatus(503);
+    }
+
+    public function test_aucun_code_ne_fuit_quand_la_liste_est_vide(): void
+    {
+        config(['sms.driver' => 'log', 'sms.numeros_test' => []]);
+
+        $this->postJson('/api/v1/send-register-otp', $this->inscription())
+            ->assertOk()
+            ->assertJsonMissing(['debug_code']);
+    }
 }

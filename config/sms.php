@@ -34,4 +34,24 @@ return [
 
     'expose_otp_in_response' => env('OTP_EXPOSE_IN_RESPONSE', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Numeros de test
+    |--------------------------------------------------------------------------
+    |
+    | Pour ces numeros, et pour eux seuls, aucun SMS n'est tente et le code
+    | revient dans la reponse HTTP. Cela permet d'essayer l'inscription sans
+    | passerelle configuree, sans ouvrir cette porte a tous les comptes comme
+    | le ferait OTP_EXPOSE_IN_RESPONSE.
+    |
+    | Format international, separes par des virgules :
+    |   OTP_NUMEROS_TEST=+242060000001,+242066123456
+    |
+    */
+
+    'numeros_test' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('OTP_NUMEROS_TEST', '')),
+    ))),
+
 ];

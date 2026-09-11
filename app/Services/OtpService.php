@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\OtpCode;
 use App\Services\Sms\SmsSender;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class OtpService
@@ -141,8 +142,31 @@ class OtpService
      * Le code n'est renvoye dans la reponse HTTP que si le drapeau de
      * developpement est explicitement active. Il vaut false par defaut.
      */
-    public function codeExposable(): bool
+    /**
+     * Numero declare comme numero de test.
+     *
+     * Aucun SMS ne lui est envoye et son code revient dans la reponse : c'est
+     * ce qui permet d'essayer l'inscription tant qu'aucune passerelle n'est
+     * branchee, sans exposer les codes de tous les autres comptes.
+     */
+    public function estNumeroDeTest(?string $telephone): bool
     {
+        if ($telephone === null || $telephone === '') {
+            return false;
+        }
+
+        /** @var list<string> $numeros */
+        $numeros = config('sms.numeros_test', []);
+
+        return in_array($telephone, $numeros, true);
+    }
+
+    public function codeExposable(?string $telephone = null): bool
+    {
+        if ($this->estNumeroDeTest($telephone)) {
+            return true;
+        }
+
         return (bool) config('sms.expose_otp_in_response', false);
     }
 
@@ -158,6 +182,15 @@ class OtpService
 
     private function envoyer(string $telephone, string $code, string $message): void
     {
+        // Numero de test : rien ne part, le code voyage dans la reponse. Sans
+        // cette porte, essayer l'inscription imposerait soit une passerelle
+        // SMS, soit d'exposer les codes de tout le monde.
+        if ($this->estNumeroDeTest($telephone)) {
+            Log::info("[OTP] Numero de test {$telephone} : code {$code} rendu dans la reponse, aucun SMS envoye.");
+
+            return;
+        }
+
         $this->sms->send($telephone, $message);
     }
 }
