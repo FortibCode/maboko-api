@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -113,5 +114,82 @@ class PasserelleSmsTest extends TestCase
         $this->postJson('/api/v1/send-register-otp', $this->inscription())
             ->assertOk()
             ->assertJsonMissing(['debug_code']);
+    }
+
+    /**
+     * @return list<array{0: string}>
+     */
+    public static function formatsDeNumero(): array
+    {
+        return [['+242061234567'], ['242061234567'], ['061234567'], ['+242 06 12 34 567']];
+    }
+
+    #[DataProvider('formatsDeNumero')]
+    public function test_le_numero_de_test_est_reconnu_quel_que_soit_son_format(string $ecriture): void
+    {
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => [$ecriture],
+        ]);
+
+        // L'application envoie toujours « +242061234567 » ; la variable
+        // d'environnement, elle, peut avoir ete recopiee autrement.
+        $this->postJson('/api/v1/send-register-otp', $this->inscription())
+            ->assertOk()
+            ->assertJsonStructure(['debug_code']);
+    }
+
+    // ------------------------------------------------------------------
+    // Phase de test ouverte : OTP_EXPOSE_IN_RESPONSE hors developpement
+    // ------------------------------------------------------------------
+
+    public function test_le_drapeau_ouvre_l_inscription_a_tout_numero(): void
+    {
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => [],
+            'sms.expose_otp_in_response' => true,
+        ]);
+
+        $this->postJson('/api/v1/send-register-otp', $this->inscription([
+            'telephone' => '+242069999999',
+        ]))->assertOk()->assertJsonStructure(['debug_code']);
+    }
+
+    public function test_mais_il_n_ouvre_jamais_la_reinitialisation_hors_developpement(): void
+    {
+        User::factory()->create(['telephone' => '+242061234567']);
+
+        config([
+            'app.env' => 'production',
+            'sms.driver' => 'log',
+            'sms.numeros_test' => [],
+            'sms.expose_otp_in_response' => true,
+        ]);
+
+        // Exposer ce code-la donnerait acces a un compte existant, celui de
+        // l'administration compris. Le drapeau ne s'y applique donc pas : la
+        // reinitialisation exige une vraie passerelle, et a defaut elle
+        // echoue franchement plutot que de livrer le code.
+        $this->postJson('/api/v1/send-otp', ['telephone' => '+242061234567'])
+            ->assertStatus(503)
+            ->assertJsonMissing(['debug_code']);
+    }
+
+    public function test_en_developpement_la_reinitialisation_reste_commode(): void
+    {
+        User::factory()->create(['telephone' => '+242061234567']);
+
+        config([
+            'app.env' => 'local',
+            'sms.driver' => 'log',
+            'sms.expose_otp_in_response' => true,
+        ]);
+
+        $this->postJson('/api/v1/send-otp', ['telephone' => '+242061234567'])
+            ->assertOk()
+            ->assertJsonStructure(['debug_code']);
     }
 }

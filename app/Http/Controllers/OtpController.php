@@ -96,6 +96,7 @@ class OtpController extends Controller
             'Si un compte existe avec ce numero, un code vient de lui etre envoye.',
             $code,
             $request->telephone,
+            OtpService::CONTEXTE_REINITIALISATION,
         ));
     }
 
@@ -127,11 +128,15 @@ class OtpController extends Controller
      * En developpement sans passerelle SMS, le code peut etre renvoye dans la
      * reponse. Le drapeau vaut false par defaut et doit le rester en production.
      */
-    private function reponseAvecCode(string $message, ?string $code, ?string $telephone = null): array
-    {
+    private function reponseAvecCode(
+        string $message,
+        ?string $code,
+        ?string $telephone = null,
+        string $contexte = OtpService::CONTEXTE_INSCRIPTION,
+    ): array {
         $reponse = ['message' => $message];
 
-        if ($code !== null && $this->otp->codeExposable($telephone)) {
+        if ($code !== null && $this->otp->codeExposable($telephone, $contexte)) {
             $reponse['debug_code'] = $code;
         }
 

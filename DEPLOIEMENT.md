@@ -83,6 +83,29 @@ OTP_NUMEROS_TEST=+242060000001,+242066123456
 Tout autre numéro continue d'exiger une vraie passerelle. C'est la manière sûre
 de tester tant que Twilio n'est pas branché.
 
+### Phase de test ouverte, sans passerelle
+
+Quand plusieurs personnes doivent essayer l'application et qu'aucune passerelle
+n'est encore branchée :
+
+```
+OTP_EXPOSE_IN_RESPONSE=true
+```
+
+Le code revient alors dans la réponse **à l'inscription, pour n'importe quel
+numéro** : l'application l'affiche et le testeur valide son compte.
+
+Ce que ce drapeau n'ouvre **pas** : la réinitialisation de mot de passe. Hors
+du poste de développement, son code n'est jamais rendu — l'exposer donnerait
+accès à un compte existant, celui de l'administration compris. Sans passerelle,
+le mot de passe oublié répond donc 503, et ne divulgue rien.
+
+Ce qu'il faut avoir en tête : pendant cette phase, quelqu'un peut créer un
+compte avec un numéro qui n'est pas le sien, puisque rien ne prouve plus qu'il
+le possède. C'est acceptable le temps d'essais entre gens de confiance, pas
+au-delà. **Retirez ce drapeau avant l'ouverture au public**, une fois Twilio
+ou un autre fournisseur en place.
+
 **N'activez pas `OTP_EXPOSE_IN_RESPONSE` en production.** Ce drapeau renvoie le
 code dans la réponse HTTP : il supprime purement et simplement la vérification
 par téléphone, et permet de créer un compte avec le numéro d'un tiers ou de

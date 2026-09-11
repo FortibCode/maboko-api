@@ -44,7 +44,12 @@ class OtpService
             'statut' => false,
         ]);
 
-        $this->envoyer($donnees['telephone'], $code, "Bienvenue sur Maboko. Votre code de validation est {$code}.");
+        $this->envoyer(
+            $donnees['telephone'],
+            $code,
+            "Bienvenue sur Maboko. Votre code de validation est {$code}.",
+            self::CONTEXTE_INSCRIPTION,
+        );
 
         return $code;
     }
@@ -66,7 +71,12 @@ class OtpService
             'statut' => false,
         ]);
 
-        $this->envoyer($telephone, $code, "Maboko : votre code de reinitialisation est {$code}. Ne le communiquez a personne.");
+        $this->envoyer(
+            $telephone,
+            $code,
+            "Maboko : votre code de reinitialisation est {$code}. Ne le communiquez a personne.",
+            self::CONTEXTE_REINITIALISATION,
+        );
 
         return $code;
     }
@@ -158,16 +168,68 @@ class OtpService
         /** @var list<string> $numeros */
         $numeros = config('sms.numeros_test', []);
 
-        return in_array($telephone, $numeros, true);
+        // La comparaison porte sur les neuf derniers chiffres : la variable
+        // d'environnement peut etre ecrite « +242061234567 », « 061234567 »
+        // ou avec des espaces, elle designera le meme abonne. Sans cela, un
+        // numero de test mal recopie echoue sans rien dire.
+        $reference = $this->chiffresSignificatifs($telephone);
+
+        foreach ($numeros as $numero) {
+            if ($this->chiffresSignificatifs($numero) === $reference) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    public function codeExposable(?string $telephone = null): bool
+    /** Neuf derniers chiffres d'un numero, indicatif et separateurs retires. */
+    private function chiffresSignificatifs(string $telephone): string
     {
+        $chiffres = preg_replace('/\D+/', '', $telephone) ?? '';
+
+        return mb_substr($chiffres, -9);
+    }
+
+    /** Le code accompagne la creation d'un compte. */
+    public const CONTEXTE_INSCRIPTION = 'inscription';
+
+    /** Le code ouvre le changement de mot de passe d'un compte existant. */
+    public const CONTEXTE_REINITIALISATION = 'reinitialisation';
+
+    /**
+     * Le code peut-il voyager dans la reponse HTTP ?
+     *
+     * Les deux contextes ne portent pas le meme risque, et c'est ce qui
+     * decide ici :
+     *
+     * - a l'inscription, exposer le code permet de creer un compte avec un
+     *   numero qu'on ne possede pas. Genant, reversible, acceptable le temps
+     *   d'une phase de test ouverte.
+     * - a la reinitialisation, il donne acces a un compte existant — celui de
+     *   l'administration comprise. C'est une prise de controle, jamais
+     *   acceptable ailleurs qu'en developpement.
+     *
+     * Le drapeau OTP_EXPOSE_IN_RESPONSE n'agit donc que sur l'inscription des
+     * qu'on quitte le poste de developpement.
+     */
+    public function codeExposable(
+        ?string $telephone = null,
+        string $contexte = self::CONTEXTE_INSCRIPTION,
+    ): bool {
         if ($this->estNumeroDeTest($telephone)) {
             return true;
         }
 
-        return (bool) config('sms.expose_otp_in_response', false);
+        if (! config('sms.expose_otp_in_response', false)) {
+            return false;
+        }
+
+        if ($contexte === self::CONTEXTE_REINITIALISATION) {
+            return in_array(config('app.env'), ['local', 'testing'], true);
+        }
+
+        return true;
     }
 
     private function genererCode(): string
@@ -180,13 +242,17 @@ class OtpService
         OtpCode::where('telephone', $telephone)->where('statut', false)->delete();
     }
 
-    private function envoyer(string $telephone, string $code, string $message): void
-    {
-        // Numero de test : rien ne part, le code voyage dans la reponse. Sans
-        // cette porte, essayer l'inscription imposerait soit une passerelle
-        // SMS, soit d'exposer les codes de tout le monde.
-        if ($this->estNumeroDeTest($telephone)) {
-            Log::info("[OTP] Numero de test {$telephone} : code {$code} rendu dans la reponse, aucun SMS envoye.");
+    private function envoyer(
+        string $telephone,
+        string $code,
+        string $message,
+        string $contexte,
+    ): void {
+        // Quand le code voyage dans la reponse — numero de test, ou phase de
+        // test ouverte — il n'y a pas de SMS a tenter, et donc aucune raison
+        // d'exiger une passerelle.
+        if ($this->codeExposable($telephone, $contexte)) {
+            Log::info("[OTP] Code {$code} rendu dans la reponse pour {$telephone}, aucun SMS envoye.");
 
             return;
         }
