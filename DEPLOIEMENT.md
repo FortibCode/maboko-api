@@ -51,6 +51,31 @@ Si la base Render donne une URL unique, `DATABASE_URL` suffit : Laravel la lit
 `APP_DEBUG=false` est impératif : l'application refuse d'ailleurs de démarrer
 en production si elle vise une API en clair (§7.1 du cahier de charges).
 
+## L'envoi des SMS — sans quoi personne ne peut s'inscrire
+
+La validation du compte repose sur un code à six chiffres envoyé par SMS. Sans
+passerelle configurée, le canal par défaut (`log`) écrit ce code dans les
+journaux du serveur : l'utilisateur ne le reçoit jamais et reste bloqué sur
+l'écran de saisie.
+
+Depuis la correction, l'API **refuse explicitement** dans ce cas — 503 avec le
+code `passerelle_sms_absente` — au lieu de répondre « Code envoyé par SMS »
+alors que rien n'est parti.
+
+| Variable | Valeur |
+|---|---|
+| `SMS_DRIVER` | `twilio` |
+| `TWILIO_SID` | identifiant du compte Twilio |
+| `TWILIO_TOKEN` | jeton d'authentification |
+| `TWILIO_FROM` | numéro expéditeur, au format international |
+
+Le canal `log` reste accepté en local et dans les tests, jamais ailleurs.
+
+**N'activez pas `OTP_EXPOSE_IN_RESPONSE` en production.** Ce drapeau renvoie le
+code dans la réponse HTTP : il supprime purement et simplement la vérification
+par téléphone, et permet de créer un compte avec le numéro d'un tiers ou de
+réinitialiser le mot de passe de n'importe qui.
+
 ## Les photos déposées
 
 Le système de fichiers d'un conteneur Render **repart vierge à chaque
