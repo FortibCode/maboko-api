@@ -90,7 +90,35 @@ return [
             'secret' => env('SUPABASE_S3_SECRET'),
             'region' => env('SUPABASE_S3_REGION', 'eu-west-1'),
             'bucket' => env('SUPABASE_S3_BUCKET', 'media'),
-            'url' => env('SUPABASE_STORAGE_URL'),
+            /*
+             * Adresse de lecture publique.
+             *
+             * Sans elle, Laravel fabrique l'URL a partir du point d'entree
+             * S3 — celui qui sert a ecrire. Les fichiers partent alors
+             * correctement mais l'adresse rendue a l'application repond 403 :
+             * les photos existent et ne s'affichent nulle part.
+             *
+             * Elle est donc deduite du point d'entree quand la variable
+             * n'est pas renseignee, pour qu'un oubli ne casse pas
+             * l'affichage.
+             */
+            'url' => env('SUPABASE_STORAGE_URL') ?: (static function (): ?string {
+                $endpoint = (string) env('SUPABASE_S3_ENDPOINT', '');
+
+                if ($endpoint === '') {
+                    return null;
+                }
+
+                $hote = (string) (parse_url($endpoint, PHP_URL_HOST) ?: '');
+                // « <ref>.storage.supabase.co » sert a ecrire,
+                // « <ref>.supabase.co » a lire.
+                $hote = str_replace('.storage.supabase.co', '.supabase.co', $hote);
+                $bucket = (string) env('SUPABASE_S3_BUCKET', 'media');
+
+                return $hote === ''
+                    ? null
+                    : "https://{$hote}/storage/v1/object/public/{$bucket}";
+            })(),
             'endpoint' => env('SUPABASE_S3_ENDPOINT'),
             // Supabase n'accepte pas les adresses de la forme
             // « bucket.domaine » : le bucket passe dans le chemin.

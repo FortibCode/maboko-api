@@ -127,7 +127,7 @@ service Render et de mettre `FILESYSTEM_DISK=supabase`.
 | `SUPABASE_S3_REGION` | Project Settings → General → Region |
 | `SUPABASE_S3_BUCKET` | le nom du bucket, `media` |
 | `SUPABASE_S3_ENDPOINT` | Storage → Settings → **S3 connection** |
-| `SUPABASE_STORAGE_URL` | `https://<réf>.supabase.co/storage/v1/object/public/<bucket>` |
+| `SUPABASE_STORAGE_URL` | `https://<réf>.supabase.co/storage/v1/object/public/<bucket>` — facultative : déduite du point d'entrée si absente |
 | `FILESYSTEM_DISK` | `supabase` |
 
 La clef S3 n'est **pas** la clef `anon` ni la `service_role` : ce sont deux
