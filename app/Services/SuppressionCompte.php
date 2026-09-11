@@ -79,8 +79,8 @@ class SuppressionCompte
 
         foreach ($verifications as $verification) {
             foreach ([$verification->chemin_recto, $verification->chemin_verso, $verification->chemin_selfie] as $chemin) {
-                if ($chemin && Storage::disk('local')->exists($chemin)) {
-                    Storage::disk('local')->delete($chemin);
+                if ($chemin && Storage::disk(MediaService::disquePrive())->exists($chemin)) {
+                    Storage::disk(MediaService::disquePrive())->delete($chemin);
                 }
             }
         }

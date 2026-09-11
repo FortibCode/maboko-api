@@ -13,6 +13,10 @@ produit l'erreur `failed to read dockerfile: open Dockerfile: no such file`.
 | Docker Build Context Directory | `.` |
 | Health Check Path | `/up` |
 
+Le *Health Check Path* mérite d'être posé : sans lui, Render interroge `/` et
+reçoit la page d'accueil de Laravel — 18 Ko à chaque sonde. `/up` répond en
+quelques octets et vérifie réellement que le framework a démarré.
+
 Le port n'est pas à configurer : le conteneur lit la variable `PORT` que
 Render lui impose et fait écouter nginx dessus.
 
@@ -47,33 +51,38 @@ Si la base Render donne une URL unique, `DATABASE_URL` suffit : Laravel la lit
 `APP_DEBUG=false` est impératif : l'application refuse d'ailleurs de démarrer
 en production si elle vise une API en clair (§7.1 du cahier de charges).
 
-## Les photos déposées — à décider avant la mise en service
+## Les photos déposées
 
 Le système de fichiers d'un conteneur Render **repart vierge à chaque
-déploiement et à chaque redémarrage**. Les photos de profil, les réalisations
-du portfolio et les pièces d'identité écrites dans `storage/app` y
-disparaîtraient sans prévenir.
+déploiement et à chaque redémarrage**. Les photos écrites dans `storage/app`
+y disparaîtraient sans prévenir.
 
-Deux réponses possibles :
+Le stockage Supabase est branché : il suffit de poser ces variables sur le
+service Render et de mettre `FILESYSTEM_DISK=supabase`.
 
-**1. Un disque persistant Render.** Ajoutez un *Disk* au service, monté sur
-`/var/www/html/storage/app`. Rien à changer dans le code. Un disque n'est pas
-disponible sur l'offre gratuite.
+| Variable | Où la trouver |
+|---|---|
+| `SUPABASE_S3_KEY` | Supabase → Storage → Settings → **S3 access keys** |
+| `SUPABASE_S3_SECRET` | affiché une seule fois, à la création de la clef |
+| `SUPABASE_S3_REGION` | Project Settings → General → Region |
+| `SUPABASE_S3_BUCKET` | le nom du bucket, `media` |
+| `SUPABASE_S3_ENDPOINT` | Storage → Settings → **S3 connection** |
+| `SUPABASE_STORAGE_URL` | `https://<réf>.supabase.co/storage/v1/object/public/<bucket>` |
+| `FILESYSTEM_DISK` | `supabase` |
 
-**2. Un stockage objet compatible S3** — Amazon S3, Cloudflare R2, Backblaze.
-Le code le gère déjà : `MediaService` écrit sur le disque configuré et renvoie
-l'URL absolue telle quelle. Il manque seulement l'adaptateur :
+La clef S3 n'est **pas** la clef `anon` ni la `service_role` : ce sont deux
+identifiants distincts, créés dans la section S3 de Supabase.
 
-```
-composer require league/flysystem-aws-s3-v3
-```
+### Les pièces d'identité vont ailleurs
 
-puis `FILESYSTEM_DISK=s3` et les variables `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_URL`
-(et `AWS_ENDPOINT` pour R2 ou Backblaze).
+Les pièces déposées pour la vérification (§7.1) sont chiffrées avant écriture
+et ne sont servies qu'à l'administration, par lien signé. Elles n'ont rien à
+faire dans un bucket public : `DISQUE_PRIVE` désigne leur disque, `local` par
+défaut — ce qui, sur Render, signifie qu'elles disparaissent au déploiement
+suivant.
 
-Tant qu'aucune des deux n'est en place, les photos tiennent jusqu'au prochain
-déploiement, pas au-delà.
+Créez un **second bucket, privé**, et déclarez-le comme un disque dédié avant
+de pointer `DISQUE_PRIVE` dessus.
 
 ## Ce que fait le conteneur au démarrage
 
@@ -83,7 +92,9 @@ déploiement, pas au-delà.
    l'environnement réel** — les mettre en cache à la construction figerait des
    valeurs absentes.
 4. Joue les migrations, sauf si `RUN_MIGRATIONS=false`.
-5. Lance nginx et php-fpm sous supervisor.
+5. Lance php-fpm, attend qu'il accepte les connexions, puis lance nginx.
+   L'ordre compte : nginx qui ouvre son port avant php-fpm renvoie des 502
+   aux requêtes arrivées dans l'intervalle.
 
 ## Vérifier après déploiement
 

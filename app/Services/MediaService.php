@@ -29,6 +29,19 @@ class MediaService
     ];
 
     /**
+     * Disque ou vivent les pieces d'identite.
+     *
+     * « local » designe le disque du conteneur, qui repart vierge a chaque
+     * deploiement : les pieces deposees y disparaitraient avant meme d'avoir
+     * ete examinees. En ligne, pointez DISQUE_PRIVE sur un stockage durable
+     * — et sur un bucket prive, jamais celui des photos publiques.
+     */
+    public static function disquePrive(): string
+    {
+        return config('filesystems.disque_prive', 'local');
+    }
+
+    /**
      * Enregistre une pièce d'identité sur le disque privé, chiffrée (§7.1).
      *
      * Le fichier est chiffré avec la clé applicative avant d'être écrit : une
@@ -43,7 +56,7 @@ class MediaService
 
         $chemin = $dossier.'/'.Str::uuid().'.'.$extension.'.chiffre';
 
-        Storage::disk('local')->put($chemin, Crypt::encryptString(base64_encode($binaire)));
+        Storage::disk(self::disquePrive())->put($chemin, Crypt::encryptString(base64_encode($binaire)));
 
         return $chemin;
     }
@@ -57,11 +70,11 @@ class MediaService
      */
     public function lirePiecePrivee(string $chemin): ?string
     {
-        if (! Storage::disk('local')->exists($chemin)) {
+        if (! Storage::disk(self::disquePrive())->exists($chemin)) {
             return null;
         }
 
-        $contenu = Storage::disk('local')->get($chemin);
+        $contenu = Storage::disk(self::disquePrive())->get($chemin);
 
         if ($contenu === null) {
             return null;

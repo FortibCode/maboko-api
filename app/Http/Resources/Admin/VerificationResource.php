@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\VerificationIdentite;
+use App\Services\MediaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -55,7 +56,7 @@ class VerificationResource extends JsonResource
         $liens = [];
 
         foreach ($faces as $face => $chemin) {
-            if (! $chemin || ! Storage::disk('local')->exists($chemin)) {
+            if (! $chemin || ! Storage::disk(MediaService::disquePrive())->exists($chemin)) {
                 continue;
             }
 

@@ -65,7 +65,8 @@ COPY docker/php.ini /usr/local/etc/php/conf.d/maboko.ini
 COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/demarrage.sh /usr/local/bin/demarrage
-RUN chmod +x /usr/local/bin/demarrage
+COPY docker/nginx-apres-fpm.sh /usr/local/bin/nginx-apres-fpm
+RUN chmod +x /usr/local/bin/demarrage /usr/local/bin/nginx-apres-fpm
 
 # Le manifeste des paquets se calcule ici : le code est complet et PHP dispose
 # desormais de ses extensions.

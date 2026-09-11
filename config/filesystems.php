@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Disque des pieces d'identite
+    |--------------------------------------------------------------------------
+    |
+    | Les pieces deposees pour la verification (§7.1) sont chiffrees avant
+    | d'etre ecrites, et ne sont servies qu'a l'administration par lien signe.
+    | Elles ne doivent jamais partager le bucket public des photos.
+    |
+    */
+
+    'disque_prive' => env('DISQUE_PRIVE', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -56,6 +69,33 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        /*
+         * Stockage Supabase, compatible S3.
+         *
+         * Le disque du conteneur repart vierge a chaque deploiement : les
+         * photos de profil, les realisations et les photos de metiers y
+         * disparaitraient. Elles vivent donc dans le bucket Supabase, qui
+         * survit aux mises en ligne.
+         *
+         * « url » est l'adresse publique de lecture, differente du point
+         * d'entree S3 qui sert, lui, a ecrire.
+         */
+        'supabase' => [
+            'driver' => 's3',
+            'key' => env('SUPABASE_S3_KEY'),
+            'secret' => env('SUPABASE_S3_SECRET'),
+            'region' => env('SUPABASE_S3_REGION', 'eu-west-1'),
+            'bucket' => env('SUPABASE_S3_BUCKET', 'media'),
+            'url' => env('SUPABASE_STORAGE_URL'),
+            'endpoint' => env('SUPABASE_S3_ENDPOINT'),
+            // Supabase n'accepte pas les adresses de la forme
+            // « bucket.domaine » : le bucket passe dans le chemin.
+            'use_path_style_endpoint' => true,
+            'visibility' => 'public',
             'throw' => false,
             'report' => false,
         ],
