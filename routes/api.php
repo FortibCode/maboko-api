@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\AbonnementController;
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\ComptesController;
 use App\Http\Controllers\Admin\FinancesController;
+use App\Http\Controllers\Admin\MetierController as AdminMetierController;
 use App\Http\Controllers\Admin\ModerationController;
+use App\Http\Controllers\Admin\NotificationBroadcastController;
 use App\Http\Controllers\Admin\PieceIdentiteController;
 use App\Http\Controllers\Admin\TableauDeBordController as AdminTableauDeBordController;
 use App\Http\Controllers\AppareilController;
@@ -19,6 +22,7 @@ use App\Http\Controllers\FavoriController;
 use App\Http\Controllers\InteractionController;
 use App\Http\Controllers\MetierController;
 use App\Http\Controllers\MissionController;
+use App\Http\Controllers\MoyenPaiementController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\PaiementWebhookController;
@@ -59,6 +63,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])
         ->middleware('throttle:connexion');
 
+    Route::post('/login/google', [AuthController::class, 'loginGoogle'])
+        ->middleware('throttle:connexion');
+
     // Mot de passe oublie : envoi du code, verification, puis changement
     // du mot de passe contre le jeton a usage unique remis a l'etape 2.
     Route::post('/send-otp', [OtpController::class, 'sendOtp'])
@@ -95,6 +102,12 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'me']);
+        // Modification des informations du compte.
+        Route::patch('/compte', [AuthController::class, 'modifierProfil']);
+        // Photo de profil reelle, en remplacement des avatars figes.
+        Route::post('/compte/avatar', [AuthController::class, 'enregistrerAvatar']);
+        Route::delete('/compte/avatar', [AuthController::class, 'supprimerAvatar']);
+        Route::delete('/compte', [AuthController::class, 'supprimerCompte']);
 
         /*
         | Tableau de bord — « Mon profil » client (§5.1.10)
@@ -121,6 +134,8 @@ Route::prefix('v1')->group(function () {
         | interprete comme un identifiant.
         */
         Route::get('/artisans/me', [ArtisanController::class, 'me']);
+        // Creation de sa propre fiche par un artisan inscrit.
+        Route::post('/artisans', [ArtisanController::class, 'store']);
         Route::get('/artisans', [ArtisanController::class, 'index']);
         Route::get('/artisans/{artisan}', [ArtisanController::class, 'show']);
         Route::get('/artisans/{artisan}/avis', [ArtisanController::class, 'avis']);
@@ -160,12 +175,15 @@ Route::prefix('v1')->group(function () {
         | interprété comme un identifiant.
         */
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
+        // Depot de la fiche vehicule par le chauffeur lui-meme.
+        Route::post('/chauffeur', [ChauffeurController::class, 'enregistrerFiche']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);
         Route::get('/chauffeur/revenus', [ChauffeurController::class, 'revenus']);
 
         Route::get('/chauffeur/propositions', [CourseController::class, 'propositions']);
         Route::post('/courses/{course}/accepter', [CourseController::class, 'accepter']);
+        Route::post('/courses/{course}/refuser', [CourseController::class, 'refuser']);
         Route::post('/courses/{course}/demarrer', [CourseController::class, 'demarrer']);
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
@@ -188,7 +206,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/tableau-de-bord', AdminTableauDeBordController::class);
 
-            // Gestion des artisans et chauffeurs (§5.4.3)
+            // Gestion des comptes et utilisateurs (§5.4.3)
+            Route::get('/utilisateurs', [ComptesController::class, 'utilisateurs']);
             Route::get('/artisans', [ComptesController::class, 'artisans']);
             Route::get('/chauffeurs', [ComptesController::class, 'chauffeurs']);
             Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])
@@ -213,6 +232,16 @@ Route::prefix('v1')->group(function () {
             // Abonnements et commissions (§5.4.4)
             Route::get('/finances', [FinancesController::class, 'synthese']);
             Route::get('/finances/export', [FinancesController::class, 'exporter']);
+
+            // Administration des métiers
+            Route::get('/metiers', [AdminMetierController::class, 'index']);
+            Route::post('/metiers', [AdminMetierController::class, 'store']);
+            Route::put('/metiers/{metier}', [AdminMetierController::class, 'update']);
+            Route::delete('/metiers/{metier}', [AdminMetierController::class, 'destroy']);
+
+            // Diffusion de notifications et logs d'audit
+            Route::post('/notifications/broadcast', [NotificationBroadcastController::class, 'diffuser']);
+            Route::get('/audit-logs', [AuditLogController::class, 'index']);
         });
 
         /*
@@ -227,6 +256,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/plans', [AbonnementController::class, 'plans']);
         Route::get('/abonnement', [AbonnementController::class, 'actuel']);
         Route::post('/abonnement', [AbonnementController::class, 'souscrire']);
+        // Moyens de paiement enregistres (§5.1.10) : operateur et numero,
+        // rien qui permette de declencher un paiement seul.
+        Route::get('/moyens-paiement', [MoyenPaiementController::class, 'index']);
+        Route::post('/moyens-paiement', [MoyenPaiementController::class, 'store']);
+        Route::post('/moyens-paiement/{moyenPaiement}/defaut', [MoyenPaiementController::class, 'definirParDefaut']);
+        Route::delete('/moyens-paiement/{moyenPaiement}', [MoyenPaiementController::class, 'destroy']);
+
         Route::get('/transactions', [AbonnementController::class, 'transactions']);
 
         /*

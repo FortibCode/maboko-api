@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -26,20 +29,59 @@ class MediaService
     ];
 
     /**
-     * Enregistre une pièce d'identité sur le disque privé (§7.1).
+     * Enregistre une pièce d'identité sur le disque privé, chiffrée (§7.1).
      *
-     * Retourne le chemin, jamais une URL : ces documents ne sont servis
-     * qu'à l'administration, par lien signé et temporaire.
+     * Le fichier est chiffré avec la clé applicative avant d'être écrit : une
+     * copie de la sauvegarde ou un accès au disque ne livre rien d'exploitable.
+     *
+     * Retourne le chemin, jamais une URL : ces documents ne sont servis qu'à
+     * l'administration, par lien signé et temporaire.
      */
     public function enregistrerPiecePrivee(string $valeur, string $dossier): string
     {
         [$binaire, $extension] = $this->decoder($valeur);
 
-        $chemin = $dossier.'/'.Str::uuid().'.'.$extension;
+        $chemin = $dossier.'/'.Str::uuid().'.'.$extension.'.chiffre';
 
-        Storage::disk('local')->put($chemin, $binaire);
+        Storage::disk('local')->put($chemin, Crypt::encryptString(base64_encode($binaire)));
 
         return $chemin;
+    }
+
+    /**
+     * Relit une pièce chiffrée.
+     *
+     * Retourne null si le fichier est absent ou si le déchiffrement échoue —
+     * ce qui arrive après une rotation de la clé applicative sans reprise des
+     * fichiers existants.
+     */
+    public function lirePiecePrivee(string $chemin): ?string
+    {
+        if (! Storage::disk('local')->exists($chemin)) {
+            return null;
+        }
+
+        $contenu = Storage::disk('local')->get($chemin);
+
+        if ($contenu === null) {
+            return null;
+        }
+
+        try {
+            return base64_decode(Crypt::decryptString($contenu), true) ?: null;
+        } catch (DecryptException $e) {
+            Log::error('[IDENTITE] déchiffrement impossible', ['chemin' => $chemin]);
+
+            return null;
+        }
+    }
+
+    /** Type MIME déduit de l'extension, pour servir le fichier déchiffré. */
+    public function typeMimeDe(string $chemin): string
+    {
+        $extension = pathinfo(str_replace('.chiffre', '', $chemin), PATHINFO_EXTENSION);
+
+        return array_search($extension, self::TYPES_AUTORISES, true) ?: 'application/octet-stream';
     }
 
     /**
@@ -58,7 +100,37 @@ class MediaService
 
         Storage::disk($this->disque())->put($chemin, $binaire);
 
-        return Storage::disk($this->disque())->url($chemin);
+        $url = Storage::disk($this->disque())->url($chemin);
+
+        // Sur disque local, seul le chemin est conserve. L'hote depend de
+        // l'adresse par laquelle le client atteint l'API — « localhost » sur
+        // la machine de developpement, une IP sur le reseau local depuis un
+        // telephone, un domaine en production. Une URL absolue figee a
+        // l'enregistrement ne s'affiche que depuis la machine qui l'a ecrite.
+        if ($this->disque() === 'public') {
+            return parse_url($url, PHP_URL_PATH) ?: $url;
+        }
+
+        return $url;
+    }
+
+    /**
+     * Rend une URL de media absolue pour le client qui interroge l'API.
+     *
+     * Les chemins relatifs sont prefixes par l'hote de la requete en cours ;
+     * les URLs deja absolues (S3, ou heritees) sont rendues telles quelles.
+     */
+    public static function absolue(?string $valeur): ?string
+    {
+        if ($valeur === null || $valeur === '') {
+            return null;
+        }
+
+        if (Str::startsWith($valeur, ['http://', 'https://'])) {
+            return $valeur;
+        }
+
+        return url($valeur);
     }
 
     /**

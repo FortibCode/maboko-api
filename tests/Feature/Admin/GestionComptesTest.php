@@ -26,6 +26,17 @@ class GestionComptesTest extends TestCase
         Sanctum::actingAs($this->admin);
     }
 
+    public function test_admin_peut_lister_tous_les_utilisateurs_par_role_et_recherche(): void
+    {
+        User::factory()->count(2)->create(['role' => User::ROLE_CLIENT]);
+        User::factory()->artisan()->create();
+
+        $reponse = $this->getJson('/api/v1/admin/utilisateurs?role=client')
+            ->assertOk();
+
+        $reponse->assertJsonCount(2, 'data');
+    }
+
     public function test_l_annuaire_des_artisans_expose_ce_qu_il_faut_pour_decider(): void
     {
         Artisan::factory()->create(['statut_validation' => Artisan::VALIDATION_EN_ATTENTE]);

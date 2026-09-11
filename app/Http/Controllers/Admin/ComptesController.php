@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Admin\ArtisanAdminResource;
+use App\Http\Resources\Admin\ChauffeurAdminResource;
+use App\Http\Resources\Admin\UserAdminResource;
 use App\Models\Artisan;
 use App\Models\Badge;
 use App\Models\Chauffeur;
@@ -12,9 +15,10 @@ use App\Services\MoteurBadges;
 use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
- * Gestion des artisans et des chauffeurs (§5.4.3).
+ * Gestion des artisans, des chauffeurs et de l'ensemble des utilisateurs (§5.4.3).
  *
  * Annuaire complet, validation des inscriptions, activation et suspension.
  */
@@ -26,60 +30,55 @@ class ComptesController extends Controller
         private MoteurBadges $badges,
     ) {}
 
-    /** Annuaire des artisans, filtrable. */
-    public function artisans(Request $request): JsonResponse
+    /** Annuaire global de tous les utilisateurs. */
+    public function utilisateurs(Request $request): AnonymousResourceCollection
     {
-        $requete = Artisan::query()
-            ->with(['utilisateur:id,nom,prenom,email,telephone,statut,avatar_url,derniere_connexion_at,role', 'metiers', 'badges', 'abonnementActif.plan'])
+        $utilisateurs = User::query()
+            ->when($request->filled('role'), fn ($r) => $r->where('role', $request->string('role')))
+            ->when($request->filled('statut'), fn ($r) => $r->where('statut', $request->string('statut')))
+            ->when($request->filled('q'), function ($r) use ($request) {
+                $terme = '%'.$request->string('q').'%';
+                $r->where('nom', 'like', $terme)
+                    ->orWhere('prenom', 'like', $terme)
+                    ->orWhere('email', 'like', $terme)
+                    ->orWhere('telephone', 'like', $terme);
+            })
+            ->latest()
+            ->paginate(25);
+
+        return UserAdminResource::collection($utilisateurs);
+    }
+
+    /** Annuaire des artisans, filtrable. */
+    public function artisans(Request $request): AnonymousResourceCollection
+    {
+        $artisans = Artisan::query()
+            ->with([
+                'utilisateur:id,nom,prenom,email,telephone,statut,avatar_url,derniere_connexion_at,role',
+                'metiers', 'badges', 'abonnementActif.plan',
+            ])
             ->when($request->filled('statut'), fn ($r) => $r->where('statut_validation', $request->string('statut')))
             ->when($request->filled('q'), function ($r) use ($request) {
                 $terme = '%'.$request->string('q').'%';
                 $r->where('specialite', 'like', $terme)
                     ->orWhereHas('utilisateur', fn ($u) => $u->where('nom', 'like', $terme)->orWhere('email', 'like', $terme));
             })
-            ->latest();
+            ->latest()
+            ->paginate(25);
 
-        return response()->json($requete->paginate(25)->through(fn (Artisan $a) => [
-            'id' => $a->id,
-            'nomComplet' => trim(($a->utilisateur->prenom ?? '').' '.$a->utilisateur->nom),
-            'email' => $a->utilisateur->email,
-            'telephone' => $a->utilisateur->telephone,
-            'specialite' => $a->specialite,
-            'metiers' => $a->metiers->pluck('nom'),
-            'badges' => $a->badges->pluck('nom'),
-            'statutValidation' => $a->statut_validation,
-            'compteSuspendu' => $a->utilisateur->statut === User::STATUT_SUSPENDU,
-            'noteMoyenne' => (float) $a->note_moyenne,
-            'nbMissionsTerminees' => $a->nb_missions_terminees,
-            'plan' => $a->abonnementActif?->plan->nom ?? 'Gratuit',
-            'derniereConnexion' => $a->utilisateur->derniere_connexion_at?->toIso8601String(),
-            'inscritLe' => $a->created_at?->toIso8601String(),
-        ]));
+        return ArtisanAdminResource::collection($artisans);
     }
 
     /** Annuaire des chauffeurs. */
-    public function chauffeurs(Request $request): JsonResponse
+    public function chauffeurs(Request $request): AnonymousResourceCollection
     {
-        $requete = Chauffeur::query()
+        $chauffeurs = Chauffeur::query()
             ->with('utilisateur:id,nom,prenom,email,telephone,statut,derniere_connexion_at,role')
             ->when($request->filled('statut'), fn ($r) => $r->where('statut_validation', $request->string('statut')))
-            ->latest();
+            ->latest()
+            ->paginate(25);
 
-        return response()->json($requete->paginate(25)->through(fn (Chauffeur $c) => [
-            'id' => $c->id,
-            'nomComplet' => trim(($c->utilisateur->prenom ?? '').' '.$c->utilisateur->nom),
-            'email' => $c->utilisateur->email,
-            'telephone' => $c->utilisateur->telephone,
-            'typeVehicule' => $c->type_vehicule,
-            'vehicule' => $c->vehicule_modele,
-            'plaque' => $c->plaque_immatriculation,
-            'permis' => $c->permis_conduire,
-            'statutValidation' => $c->statut_validation,
-            'compteSuspendu' => $c->utilisateur->statut === User::STATUT_SUSPENDU,
-            'enLigne' => (bool) $c->en_ligne,
-            'nbCoursesTerminees' => $c->nb_courses_terminees,
-            'inscritLe' => $c->created_at?->toIso8601String(),
-        ]));
+        return ChauffeurAdminResource::collection($chauffeurs);
     }
 
     /** Validation d'une inscription artisan ou chauffeur. */
@@ -90,11 +89,10 @@ class ComptesController extends Controller
             'motif' => 'sometimes|nullable|string|max:500',
         ]);
 
-        $fiche = $type === 'artisans' ? Artisan::find($id) : Chauffeur::find($id);
-
-        if (! $fiche) {
-            return response()->json(['message' => 'Fiche introuvable.'], 404);
-        }
+        /** @var Artisan|Chauffeur $fiche */
+        $fiche = $type === 'artisans'
+            ? Artisan::findOrFail($id)
+            : Chauffeur::findOrFail($id);
 
         $avant = $fiche->statut_validation;
 
@@ -110,17 +108,16 @@ class ComptesController extends Controller
             ['statut_validation' => $donnees['decision'], 'motif' => $donnees['motif'] ?? null],
         );
 
-        if ($fiche->utilisateur) {
-            $this->notifications->notifier(
-                $fiche->utilisateur,
-                $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
-                $donnees['decision'] === 'valide'
-                    ? 'Vous apparaissez désormais dans les recherches Maboko.'
-                    : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
-                type: 'validation_profil',
-                important: true,
-            );
-        }
+        // La clé étrangère est obligatoire et contrainte : l'utilisateur existe.
+        $this->notifications->notifier(
+            $fiche->utilisateur,
+            $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
+            $donnees['decision'] === 'valide'
+                ? 'Vous apparaissez désormais dans les recherches Maboko.'
+                : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
+            type: 'validation_profil',
+            important: true,
+        );
 
         return response()->json([
             'message' => $donnees['decision'] === 'valide' ? 'Profil validé.' : 'Profil refusé.',

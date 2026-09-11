@@ -8,6 +8,7 @@ use App\Http\Resources\ArtisanResource;
 use App\Http\Resources\AvisResource;
 use App\Models\Artisan;
 use App\Models\Metier;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -120,6 +121,62 @@ class ArtisanController extends Controller
         }
 
         return new ArtisanResource($artisan);
+    }
+
+    /**
+     * Creation de sa propre fiche par un artisan inscrit (§5.2.1).
+     *
+     * Symetrique du depot de fiche chauffeur : l'inscription ne cree que le
+     * compte, et sans cet endpoint un artisan inscrit depuis l'application
+     * restait sans fiche, donc invisible et sans tableau de bord.
+     *
+     * La fiche part en attente de validation, comme celles du seeder.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $utilisateur = $request->user();
+
+        if ($utilisateur->role !== User::ROLE_ARTISAN) {
+            return response()->json([
+                'message' => 'Seul un compte artisan peut creer une fiche artisan.',
+            ], 403);
+        }
+
+        if (Artisan::where('utilisateur_id', $utilisateur->id)->exists()) {
+            return response()->json([
+                'message' => 'Une fiche artisan est deja rattachee a ce compte.',
+            ], 409);
+        }
+
+        $donnees = $request->validate([
+            'specialite' => 'required|string|max:255',
+            'adresse' => 'required|string|max:255',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'bio' => 'sometimes|nullable|string|max:2000',
+            'zone_intervention' => 'sometimes|nullable|string|max:255',
+            'rayon_km' => 'sometimes|integer|min:1|max:200',
+            'metiers' => 'sometimes|array|max:5',
+            'metiers.*' => 'string|exists:metiers,slug',
+        ]);
+
+        $artisan = Artisan::create(
+            collect($donnees)->except('metiers')->all() + [
+                'utilisateur_id' => $utilisateur->id,
+                'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
+            ],
+        );
+
+        if (isset($donnees['metiers'])) {
+            $artisan->metiers()->sync(
+                Metier::whereIn('slug', $donnees['metiers'])->pluck('id'),
+            );
+        }
+
+        return response()->json(
+            new ArtisanResource($artisan->fresh(['utilisateur', 'metiers', 'badges'])),
+            201,
+        );
     }
 
     public function update(MettreAJourArtisanRequest $request, Artisan $artisan): ArtisanResource

@@ -304,4 +304,131 @@ class CourseTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors('depart_latitude');
     }
+
+    // ------------------------------------------------------------------
+    // Refus d'une course (§5.3.1)
+    // ------------------------------------------------------------------
+
+    public function test_une_course_refusee_disparait_des_propositions(): void
+    {
+        $chauffeur = $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        Sanctum::actingAs($chauffeur->utilisateur);
+        $this->getJson('/api/v1/chauffeur/propositions')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $id);
+
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertOk();
+
+        $this->getJson('/api/v1/chauffeur/propositions')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_un_refus_ne_retire_la_course_qu_a_son_auteur(): void
+    {
+        $premier = $this->chauffeurProche();
+        $second = $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        Sanctum::actingAs($premier->utilisateur);
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertOk();
+
+        Sanctum::actingAs($second->utilisateur);
+        $this->getJson('/api/v1/chauffeur/propositions')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $id);
+    }
+
+    public function test_la_course_refusee_reste_ouverte(): void
+    {
+        $chauffeur = $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        Sanctum::actingAs($chauffeur->utilisateur);
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertOk();
+
+        $this->assertSame(
+            Course::STATUT_RECHERCHE,
+            Course::findOrFail($id)->statut,
+        );
+    }
+
+    public function test_refuser_deux_fois_ne_provoque_pas_d_erreur(): void
+    {
+        $chauffeur = $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        Sanctum::actingAs($chauffeur->utilisateur);
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertOk();
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertOk();
+
+        $this->assertDatabaseCount('refus_courses', 1);
+    }
+
+    public function test_une_course_deja_prise_ne_peut_plus_etre_refusee(): void
+    {
+        $premier = $this->chauffeurProche();
+        $second = $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        Sanctum::actingAs($premier->utilisateur);
+        $this->postJson("/api/v1/courses/{$id}/accepter")->assertOk();
+
+        Sanctum::actingAs($second->utilisateur);
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertStatus(409);
+    }
+
+    public function test_un_client_ne_peut_pas_refuser_une_course(): void
+    {
+        $this->chauffeurProche();
+        Sanctum::actingAs($this->client);
+        $id = $this->reserver()->json('course.id');
+
+        $this->postJson("/api/v1/courses/{$id}/refuser")->assertForbidden();
+    }
+
+    // ------------------------------------------------------------------
+    // Distance jusqu'au point de prise en charge (§5.3.1)
+    // ------------------------------------------------------------------
+
+    public function test_la_proposition_annonce_la_distance_jusqu_au_client(): void
+    {
+        // Chauffeur place a environ un kilometre du point de depart.
+        $chauffeur = $this->chauffeurProche(lat: -4.2984, lng: 15.2429);
+        Sanctum::actingAs($this->client);
+        $this->reserver();
+
+        Sanctum::actingAs($chauffeur->utilisateur);
+
+        $distance = $this->getJson('/api/v1/chauffeur/propositions')
+            ->assertOk()
+            ->json('data.0.distancePriseEnChargeKm');
+
+        $this->assertNotNull($distance);
+        $this->assertGreaterThan(0, $distance);
+        $this->assertLessThan(3, $distance);
+    }
+
+    public function test_cette_distance_differe_de_la_longueur_du_trajet(): void
+    {
+        $chauffeur = $this->chauffeurProche(lat: -4.2894, lng: 15.2429);
+        Sanctum::actingAs($this->client);
+        $this->reserver();
+
+        Sanctum::actingAs($chauffeur->utilisateur);
+
+        $donnees = $this->getJson('/api/v1/chauffeur/propositions')->assertOk()->json('data.0');
+
+        // Le chauffeur est sur le point de depart : distance nulle, alors que
+        // le trajet lui fait plusieurs kilometres.
+        $this->assertSame(0.0, (float) $donnees['distancePriseEnChargeKm']);
+        $this->assertGreaterThan(1, (float) $donnees['distanceKm']);
+    }
 }

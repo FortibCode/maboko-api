@@ -10,6 +10,8 @@ use App\Policies\ArtisanPolicy;
 use App\Policies\ConversationPolicy;
 use App\Policies\CoursePolicy;
 use App\Policies\DemandeDevisPolicy;
+use App\Services\Auth\GoogleAccessTokenVerificateur;
+use App\Services\Auth\VerificateurJetonGoogle;
 use App\Services\Push\EnvoyeurPush;
 use App\Services\Push\FirebaseEnvoyeurPush;
 use App\Services\Push\LogEnvoyeurPush;
@@ -17,6 +19,7 @@ use App\Services\Sms\LogSmsSender;
 use App\Services\Sms\SmsSender;
 use App\Services\Sms\TwilioSmsSender;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -26,6 +29,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(VerificateurJetonGoogle::class, GoogleAccessTokenVerificateur::class);
+
         $this->app->bind(EnvoyeurPush::class, function () {
             return match (config('push.driver')) {
                 'firebase' => new FirebaseEnvoyeurPush,
@@ -45,6 +50,21 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configurerLimiteursDeDebit();
         $this->enregistrerPolicies();
+        $this->activerGardesDeDeveloppement();
+    }
+
+    /**
+     * Garde-fous actifs hors production.
+     *
+     * Une relation chargée à la volée dans une boucle produit une requête par
+     * ligne : invisible sur un jeu de test, ruineux sur une 3G à Brazzaville
+     * avec trente publications à l'écran. Mieux vaut échouer en développement
+     * que ramer en production.
+     */
+    private function activerGardesDeDeveloppement(): void
+    {
+        Model::preventLazyLoading(! app()->isProduction());
+        Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
     }
 
     private function enregistrerPolicies(): void

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\MediaService;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -28,5 +30,15 @@ class Message extends Model
     public function expediteur(): BelongsTo
     {
         return $this->belongsTo(User::class, 'expediteur_id');
+    }
+
+    /**
+     * Rend l'URL absolue pour le client qui interroge l'API.
+     *
+     * La colonne ne contient qu'un chemin : l'hote se decide a la lecture.
+     */
+    protected function mediaUrl(): Attribute
+    {
+        return Attribute::get(fn (?string $valeur) => MediaService::absolue($valeur));
     }
 }

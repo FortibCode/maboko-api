@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\EnTetesDeSecurite;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,9 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Toute route API est limitee en debit et resout ses liaisons de modele.
+        // Toute route API est limitee en debit, porte les en-tetes de securite
+        // du paragraphe 7.1, et resout ses liaisons de modele.
         $middleware->api(prepend: [
             'throttle:api',
+            EnTetesDeSecurite::class,
             SubstituteBindings::class,
         ]);
 

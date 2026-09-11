@@ -45,7 +45,7 @@ class DemandeDevisController extends Controller
 
         if ($utilisateur->estArtisan()) {
             $requete->whereHas('artisan', fn ($r) => $r->where('utilisateur_id', $utilisateur->id));
-        } else {
+        } elseif (! $utilisateur->estAdmin()) {
             $requete->where('client_id', $utilisateur->id);
         }
 

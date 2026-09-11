@@ -19,3 +19,12 @@ Schedule::command('maboko:renouveler-abonnements')
 Schedule::call(function () {
     Story::where('expire_at', '<', now()->subDays(7))->delete();
 })->daily()->name('purge-stories');
+
+/*
+| Sauvegarde quotidienne de la base et des fichiers privés (§7.1).
+| Quatorze jours de rétention : au-delà, le disque se remplit.
+*/
+Schedule::command('maboko:sauvegarder')
+    ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->onOneServer();

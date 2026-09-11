@@ -92,6 +92,9 @@ class AppariementCourse
             .' + sin(radians(?)) * sin(radians(p.latitude))))';
 
         return Chauffeur::query()
+            // L'appelant notifie chaque candidat : sans ce chargement, dix
+            // chauffeurs proches produiraient dix requêtes supplémentaires.
+            ->with('utilisateur:id,nom,prenom,telephone,role')
             ->disponibles()
             ->where('type_vehicule', $course->type_vehicule)
             ->join('positions_chauffeurs as p', function ($jointure) {

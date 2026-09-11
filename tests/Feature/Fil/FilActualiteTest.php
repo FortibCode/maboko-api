@@ -257,4 +257,33 @@ class FilActualiteTest extends TestCase
 
         $this->postJson("/api/v1/suivre/{$artisan->id}")->assertStatus(422);
     }
+
+    public function test_le_fil_peut_etre_filtre_sur_un_artisan_precis(): void
+    {
+        $lecteur = User::factory()->create();
+        $artisan = User::factory()->create(['role' => User::ROLE_ARTISAN]);
+        $autre = User::factory()->create(['role' => User::ROLE_ARTISAN]);
+
+        $sienne = $this->publication($artisan, 'Mur monte a Bacongo.');
+        $this->publication($autre, 'Portail soude a Mpila.');
+
+        Sanctum::actingAs($lecteur);
+
+        $reponse = $this->getJson('/api/v1/posts?artisan='.$artisan->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $this->assertSame($sienne->id, $reponse->json('data.0.id'));
+    }
+
+    public function test_sans_filtre_le_fil_reste_global(): void
+    {
+        $lecteur = User::factory()->create();
+        $this->publication(User::factory()->create(['role' => User::ROLE_ARTISAN]));
+        $this->publication(User::factory()->create(['role' => User::ROLE_ARTISAN]));
+
+        Sanctum::actingAs($lecteur);
+
+        $this->getJson('/api/v1/posts')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

@@ -34,11 +34,14 @@ class FinancesController extends Controller
             'revenus' => [
                 'total' => (float) (clone $transactions)->sum('montant'),
                 'nbTransactions' => (clone $transactions)->count(),
+                // toBase() : une agrégation ne produit pas des modèles mais
+                // des lignes brutes ; les hydrater n'aurait aucun sens.
                 'parOperateur' => (clone $transactions)
+                    ->toBase()
                     ->selectRaw('operateur, count(*) as nombre, coalesce(sum(montant), 0) as total')
                     ->groupBy('operateur')
                     ->get()
-                    ->map(fn ($ligne) => [
+                    ->map(fn (object $ligne) => [
                         'operateur' => $ligne->operateur,
                         'nombre' => (int) $ligne->nombre,
                         'total' => (float) $ligne->total,

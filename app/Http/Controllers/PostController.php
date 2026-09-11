@@ -42,6 +42,13 @@ class PostController extends Controller
             $requete->whereIn('artisan_id', $suivis->push($utilisateur->id));
         }
 
+        // Portfolio d'un artisan precis (§5.1.6). Sans ce filtre, un client
+        // consultant une fiche ne pouvait pas voir ses realisations : seul le
+        // fil global etait interrogeable.
+        if ($request->filled('artisan')) {
+            $requete->where('artisan_id', $request->integer('artisan'));
+        }
+
         return PostResource::collection($requete->cursorPaginate(15));
     }
 

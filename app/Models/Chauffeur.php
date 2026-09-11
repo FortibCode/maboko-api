@@ -27,6 +27,12 @@ class Chauffeur extends Model
 {
     use HasFactory;
 
+    public const VALIDATION_EN_ATTENTE = 'en_attente';
+
+    public const VALIDATION_VALIDE = 'valide';
+
+    public const VALIDATION_REJETE = 'rejete';
+
     public const VEHICULE_MOTO = 'moto';
 
     public const VEHICULE_VOITURE = 'voiture';

@@ -98,6 +98,10 @@ class TableauDeBordController extends Controller
                 'moisCourant' => (float) (clone $revenus)
                     ->where('terminee_at', '>=', now()->startOfMonth())
                     ->sum('montant_final'),
+                // Douze mois glissants, pour le suivi graphique (§5.2.4).
+                // Un seul passage en base plutot qu'une requete par mois :
+                // l'ecran s'ouvre parfois sur une connexion lente.
+                'parMois' => $this->revenusParMois(clone $revenus),
             ],
             'noteMoyenne' => (float) $artisan->note_moyenne,
             'nbAvis' => $artisan->nb_avis,
@@ -132,5 +136,38 @@ class TableauDeBordController extends Controller
             ->pluck('total', 'statut')
             ->map(fn ($total) => (int) $total)
             ->all();
+    }
+
+    /**
+     * Revenus des douze derniers mois, mois vides compris.
+     *
+     * Sans les mois a zero, la courbe sauterait d'un mois actif au suivant et
+     * donnerait a lire une activite continue qui n'existe pas.
+     *
+     * @param  Builder<DemandeDevis>  $revenus
+     * @return list<array{mois: string, total: float}>
+     */
+    private function revenusParMois($revenus): array
+    {
+        $debut = now()->copy()->subMonths(11)->startOfMonth();
+
+        // Le regroupement par mois se fait en PHP, pas en SQL : la fonction
+        // de formatage de date porte un nom different selon le moteur
+        // (strftime, date_format, to_char), et le volume tient largement en
+        // memoire — les missions terminees d'un seul artisan sur douze mois.
+        $sommes = (clone $revenus)
+            ->where('terminee_at', '>=', $debut)
+            ->get(['terminee_at', 'montant_final'])
+            ->groupBy(fn ($mission) => $mission->terminee_at->format('Y-m'))
+            ->map(fn ($mois) => (float) $mois->sum('montant_final'));
+
+        $serie = [];
+
+        for ($recul = 11; $recul >= 0; $recul--) {
+            $mois = now()->copy()->subMonths($recul)->format('Y-m');
+            $serie[] = ['mois' => $mois, 'total' => (float) ($sommes[$mois] ?? 0)];
+        }
+
+        return $serie;
     }
 }

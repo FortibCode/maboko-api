@@ -5,7 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $statut
+ * @property Carbon|null $created_at
+ * @property-read User|null $auteur
+ * @property-read User|null $responsable
+ */
 class Litige extends Model
 {
     protected $fillable = [

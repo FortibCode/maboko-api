@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\PositionChauffeur;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Espace du chauffeur (§5.3.4) : disponibilité, position et revenus.
@@ -149,6 +150,73 @@ class ChauffeurController extends Controller
             'total' => (float) (clone $terminees)->sum('tarif_final'),
             'nbCoursesTerminees' => $chauffeur->nb_courses_terminees,
         ]);
+    }
+
+    /**
+     * Depot de la fiche vehicule par le chauffeur lui-meme (§5.3.1).
+     *
+     * Jusqu'ici seul le seeder creait des lignes « chauffeurs » : un compte
+     * inscrit depuis l'application n'avait aucun moyen d'obtenir sa fiche, et
+     * restait bloque sur un ecran l'invitant a contacter l'equipe.
+     *
+     * La fiche part en attente : c'est l'ecran d'administration existant qui
+     * la valide ou la refuse. Une modification apres validation repasse en
+     * attente, car le vehicule approuve n'est plus le meme.
+     */
+    public function enregistrerFiche(Request $request): JsonResponse
+    {
+        $utilisateur = $request->user();
+
+        if (! $utilisateur->estChauffeur()) {
+            return response()->json([
+                'message' => 'Seul un compte chauffeur peut deposer une fiche vehicule.',
+            ], 403);
+        }
+
+        $existante = $this->fiche($request);
+
+        $donnees = $request->validate([
+            'type_vehicule' => ['required', Rule::in([Chauffeur::VEHICULE_MOTO, Chauffeur::VEHICULE_VOITURE])],
+            'vehicule_modele' => ['required', 'string', 'max:120'],
+            'plaque_immatriculation' => [
+                'required', 'string', 'max:20',
+                Rule::unique('chauffeurs', 'plaque_immatriculation')->ignore($existante?->id),
+            ],
+            'permis_conduire' => [
+                'required', 'string', 'max:50',
+                Rule::unique('chauffeurs', 'permis_conduire')->ignore($existante?->id),
+            ],
+        ]);
+
+        $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
+        $donnees['valide_at'] = null;
+
+        if ($existante) {
+            // Un vehicule non valide ne doit pas rester visible a l'appariement.
+            $donnees['en_ligne'] = false;
+            $existante->update($donnees);
+            $chauffeur = $existante->fresh();
+        } else {
+            $chauffeur = Chauffeur::create($donnees + [
+                'utilisateur_id' => $utilisateur->id,
+                'disponibilite' => true,
+                'en_ligne' => false,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Fiche enregistree. Elle sera examinee par l\'equipe Maboko.',
+            'ficheManquante' => false,
+            'id' => $chauffeur->id,
+            'typeVehicule' => $chauffeur->type_vehicule,
+            'vehicule' => $chauffeur->vehicule_modele,
+            'plaque' => $chauffeur->plaque_immatriculation,
+            'enLigne' => false,
+            'disponible' => (bool) $chauffeur->disponibilite,
+            'statutValidation' => $chauffeur->statut_validation,
+            'noteMoyenne' => (float) $chauffeur->note_moyenne,
+            'nbCoursesTerminees' => $chauffeur->nb_courses_terminees,
+        ], $existante ? 200 : 201);
     }
 
     private function fiche(Request $request): ?Chauffeur

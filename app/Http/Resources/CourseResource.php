@@ -34,6 +34,12 @@ class CourseResource extends JsonResource
             ],
 
             'distanceKm' => (float) $this->resource->distance_km,
+            // Distance qui separe le chauffeur du point de prise en charge,
+            // ajoutee seulement sur les propositions qui lui sont faites.
+            'distancePriseEnChargeKm' => $this->when(
+                isset($this->resource->distance_prise_en_charge),
+                fn () => (float) $this->resource->distance_prise_en_charge,
+            ),
             'dureeEstimeeMin' => $this->resource->duree_estimee_min,
             'tarifEstime' => (float) $this->resource->tarif_estime,
             'tarifFinal' => $this->resource->tarif_final ? (float) $this->resource->tarif_final : null,

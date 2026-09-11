@@ -123,4 +123,34 @@ class TableauDeBordTest extends TestCase
 
         $this->getJson('/api/v1/favoris')->assertOk()->assertJsonCount(0, 'data');
     }
+
+    public function test_le_tableau_de_bord_expose_douze_mois_de_revenus(): void
+    {
+        $artisan = Artisan::factory()->create();
+        Sanctum::actingAs($artisan->utilisateur);
+
+        $reponse = $this->getJson('/api/v1/tableau-de-bord')->assertOk();
+
+        $serie = $reponse->json('revenus.parMois');
+
+        // Douze mois glissants, meme sans activite : une courbe qui sauterait
+        // les mois vides ferait lire une activite continue inexistante.
+        $this->assertCount(12, $serie);
+        $this->assertSame(now()->format('Y-m'), $serie[11]['mois']);
+        $this->assertSame(now()->copy()->subMonths(11)->format('Y-m'), $serie[0]['mois']);
+    }
+
+    public function test_un_mois_sans_mission_vaut_zero(): void
+    {
+        $artisan = Artisan::factory()->create();
+        Sanctum::actingAs($artisan->utilisateur);
+
+        $serie = $this->getJson('/api/v1/tableau-de-bord')->json('revenus.parMois');
+
+        // Le decodage JSON ramene 0.0 a un entier : on compare la valeur,
+        // pas le type.
+        foreach ($serie as $mois) {
+            $this->assertEquals(0, $mois['total']);
+        }
+    }
 }
