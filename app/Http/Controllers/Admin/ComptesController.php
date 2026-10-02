@@ -14,7 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Gestion des artisans et des chauffeurs (§5.4.3).
+ * Gestion des artisans et des chauffeurs (Â§5.4.3).
  *
  * Annuaire complet, validation des inscriptions, activation et suspension.
  */
@@ -74,6 +74,7 @@ class ComptesController extends Controller
             'vehicule' => $c->vehicule_modele,
             'plaque' => $c->plaque_immatriculation,
             'permis' => $c->permis_conduire,
+            'permisCategories' => $c->permis_categories, // 👈 AJOUTÉ ICI
             'statutValidation' => $c->statut_validation,
             'compteSuspendu' => $c->utilisateur->statut === User::STATUT_SUSPENDU,
             'enLigne' => (bool) $c->en_ligne,
@@ -113,9 +114,9 @@ class ComptesController extends Controller
         if ($fiche->utilisateur) {
             $this->notifications->notifier(
                 $fiche->utilisateur,
-                $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
+                $donnees['decision'] === 'valide' ? 'Votre profil est validÃ©' : 'Votre profil a Ã©tÃ© refusÃ©',
                 $donnees['decision'] === 'valide'
-                    ? 'Vous apparaissez désormais dans les recherches Maboko.'
+                    ? 'Vous apparaissez dÃ©sormais dans les recherches Maboko.'
                     : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
                 type: 'validation_profil',
                 important: true,
@@ -123,16 +124,16 @@ class ComptesController extends Controller
         }
 
         return response()->json([
-            'message' => $donnees['decision'] === 'valide' ? 'Profil validé.' : 'Profil refusé.',
+            'message' => $donnees['decision'] === 'valide' ? 'Profil validÃ©.' : 'Profil refusÃ©.',
             'statutValidation' => $fiche->fresh()->statut_validation,
         ]);
     }
 
     /**
-     * Suspension ou réactivation d'un compte (§5.4.3).
+     * Suspension ou rÃ©activation d'un compte (Â§5.4.3).
      *
-     * La suspension révoque les sessions ouvertes : sans cela, un compte
-     * suspendu reste actif jusqu'à l'expiration de son jeton.
+     * La suspension rÃ©voque les sessions ouvertes : sans cela, un compte
+     * suspendu reste actif jusqu'Ã  l'expiration de son jeton.
      */
     public function basculerSuspension(Request $request, User $utilisateur): JsonResponse
     {
@@ -142,7 +143,7 @@ class ComptesController extends Controller
         ]);
 
         if ($utilisateur->estAdmin()) {
-            return response()->json(['message' => 'Un compte d’administration ne se suspend pas depuis cet écran.'], 422);
+            return response()->json(['message' => 'Un compte dâ€™administration ne se suspend pas depuis cet Ã©cran.'], 422);
         }
 
         $avant = $utilisateur->statut;
@@ -162,12 +163,12 @@ class ComptesController extends Controller
         );
 
         return response()->json([
-            'message' => $donnees['suspendre'] ? 'Compte suspendu.' : 'Compte réactivé.',
+            'message' => $donnees['suspendre'] ? 'Compte suspendu.' : 'Compte rÃ©activÃ©.',
             'statut' => $nouveau,
         ]);
     }
 
-    /** Attribution manuelle d'un badge (§4.5). */
+    /** Attribution manuelle d'un badge (Â§4.5). */
     public function attribuerBadge(Request $request, Artisan $artisan): JsonResponse
     {
         $donnees = $request->validate([
@@ -181,7 +182,7 @@ class ComptesController extends Controller
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
 
-            return response()->json(['message' => 'Badge retiré.']);
+            return response()->json(['message' => 'Badge retirÃ©.']);
         }
 
         $accorde = $this->badges->attribuerManuellement($artisan, $badge, $request->user()->id);
@@ -191,7 +192,7 @@ class ComptesController extends Controller
         }
 
         return response()->json([
-            'message' => $accorde ? 'Badge attribué.' : 'Cet artisan possède déjà ce badge.',
+            'message' => $accorde ? 'Badge attribuÃ©.' : 'Cet artisan possÃ¨de dÃ©jÃ  ce badge.',
         ], $accorde ? 201 : 200);
     }
 }

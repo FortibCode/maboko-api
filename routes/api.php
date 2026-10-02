@@ -159,6 +159,7 @@ Route::prefix('v1')->group(function () {
         | « propositions » est déclaré avant « {course} », sinon le mot serait
         | interprété comme un identifiant.
         */
+        Route::post('/chauffeur', [ChauffeurController::class, 'store']);  // ← AJOUTÉ : création de la fiche
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);

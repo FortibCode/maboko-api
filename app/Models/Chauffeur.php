@@ -15,29 +15,36 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $type_vehicule
  * @property string $vehicule_modele
  * @property string $plaque_immatriculation
+ * @property string $permis_conduire
+ * @property string|null $permis_categories
  * @property bool $en_ligne
  * @property bool $disponibilite
  * @property string $statut_validation
  * @property int $nb_courses_terminees
- * @property float|null $distance_km Calculée par l'appariement
  * @property-read User $utilisateur
- * @property-read PositionChauffeur|null $dernierePosition
  */
 class Chauffeur extends Model
 {
     use HasFactory;
 
     public const VEHICULE_MOTO = 'moto';
-
     public const VEHICULE_VOITURE = 'voiture';
 
     protected $table = 'chauffeurs';
 
     protected $fillable = [
-        'utilisateur_id', 'permis_conduire', 'vehicule_modele',
-        'plaque_immatriculation', 'disponibilite', 'type_vehicule',
-        'note_moyenne', 'nb_courses_terminees', 'statut_validation',
-        'en_ligne', 'valide_at',
+        'utilisateur_id',
+        'permis_conduire',
+        'permis_categories',
+        'vehicule_modele',
+        'plaque_immatriculation',
+        'disponibilite',
+        'type_vehicule',
+        'note_moyenne',
+        'nb_courses_terminees',
+        'statut_validation',
+        'en_ligne',
+        'valide_at',
     ];
 
     protected function casts(): array
@@ -70,7 +77,6 @@ class Chauffeur extends Model
         return $this->hasOne(PositionChauffeur::class)->latestOfMany('releve_at');
     }
 
-    /** Chauffeurs joignables pour une nouvelle course. */
     public function scopeDisponibles(Builder $requete): Builder
     {
         return $requete->where('en_ligne', true)

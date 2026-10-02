@@ -9,10 +9,65 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Espace du chauffeur (§5.3.4) : disponibilité, position et revenus.
+ * Espace du chauffeur (§5.3) : fiche, disponibilité, position et revenus.
  */
 class ChauffeurController extends Controller
 {
+    /**
+     * Création de la fiche véhicule du chauffeur connecté (§5.3.1).
+     *
+     * Cette route manquait : le mobile l'appelait, mais aucune route
+     * n'était déclarée côté serveur. Le compte restait sans fiche et
+     * tout l'espace chauffeur répondait 404.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $donnees = $request->validate([
+            'type_vehicule' => 'required|string|in:moto,voiture,utilitaire,camion,bus,taxi',
+            'vehicule_modele' => 'required|string|max:100',
+            'plaque_immatriculation' => 'required|string|max:20',
+            'permis_conduire' => 'required|string|max:50',
+            'permis_categories' => 'nullable|string|max:50',
+        ]);
+
+        // Le permis est unique par personne, mais un chauffeur peut
+        // corriger sa propre fiche sans être bloqué par sa propre entrée.
+        $existant = Chauffeur::where('permis_conduire', $donnees['permis_conduire'])
+            ->where('utilisateur_id', '!=', $request->user()->id)
+            ->exists();
+
+        if ($existant) {
+            return response()->json([
+                'message' => 'The permis conduire has already been taken.',
+                'errors' => [
+                    'permis_conduire' => ['Ce numéro de permis est déjà utilisé.'],
+                ],
+            ], 422);
+        }
+
+        $chauffeur = Chauffeur::updateOrCreate(
+            ['utilisateur_id' => $request->user()->id],
+            [
+                ...$donnees,
+                'statut_validation' => 'en_attente',
+            ],
+        );
+
+        return response()->json([
+            'id' => $chauffeur->id,
+            'typeVehicule' => $chauffeur->type_vehicule,
+            'vehicule' => $chauffeur->vehicule_modele,
+            'plaque' => $chauffeur->plaque_immatriculation,
+            'permisConduire' => $chauffeur->permis_conduire,
+            'permisCategories' => $chauffeur->permis_categories,
+            'enLigne' => (bool) $chauffeur->en_ligne,
+            'disponible' => (bool) $chauffeur->disponibilite,
+            'statutValidation' => $chauffeur->statut_validation,
+            'noteMoyenne' => (float) $chauffeur->note_moyenne,
+            'nbCoursesTerminees' => $chauffeur->nb_courses_terminees,
+        ], 201);
+    }
+
     /** Fiche et état du chauffeur connecté. */
     public function moi(Request $request): JsonResponse
     {
@@ -31,6 +86,8 @@ class ChauffeurController extends Controller
             'typeVehicule' => $chauffeur->type_vehicule,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
+            'permisConduire' => $chauffeur->permis_conduire,
+            'permisCategories' => $chauffeur->permis_categories,
             'enLigne' => (bool) $chauffeur->en_ligne,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
@@ -39,12 +96,6 @@ class ChauffeurController extends Controller
         ]);
     }
 
-    /**
-     * Bascule entre en ligne et hors ligne (§5.3.4).
-     *
-     * Passer hors ligne pendant une course en cours est refusé : le client
-     * attend, et le chauffeur disparaîtrait de son écran de suivi.
-     */
     public function basculerDisponibilite(Request $request): JsonResponse
     {
         $chauffeur = $this->fiche($request);
@@ -63,7 +114,6 @@ class ChauffeurController extends Controller
 
         $chauffeur->update([
             'en_ligne' => $donnees['en_ligne'],
-            // Repasser en ligne rend de nouveau joignable, sauf course en cours.
             'disponibilite' => $donnees['en_ligne'] && ! $this->aUneCourseEnCours($chauffeur),
         ]);
 
@@ -73,12 +123,6 @@ class ChauffeurController extends Controller
         ]);
     }
 
-    /**
-     * Position transmise par l'application chauffeur.
-     *
-     * Elle sert à deux choses : proposer les courses au plus proche, et
-     * permettre au client de suivre l'arrivée de son véhicule.
-     */
     public function transmettrePosition(Request $request): JsonResponse
     {
         $chauffeur = $this->fiche($request);
@@ -103,9 +147,6 @@ class ChauffeurController extends Controller
         return response()->json(['message' => 'Position enregistrée.'], 201);
     }
 
-    /**
-     * Revenus du jour et des sept derniers jours (§5.3.4).
-     */
     public function revenus(Request $request): JsonResponse
     {
         $chauffeur = $this->fiche($request);
@@ -117,8 +158,6 @@ class ChauffeurController extends Controller
         $terminees = Course::where('chauffeur_id', $chauffeur->id)
             ->where('statut', Course::STATUT_TERMINEE);
 
-        // Un seul passage en base pour les sept jours, plutôt qu'une requête
-        // par jour : l'écran s'ouvre sur une connexion lente.
         $parJour = (clone $terminees)
             ->where('terminee_at', '>=', now()->subDays(6)->startOfDay())
             ->selectRaw('date(terminee_at) as jour, count(*) as courses, coalesce(sum(tarif_final), 0) as total')
