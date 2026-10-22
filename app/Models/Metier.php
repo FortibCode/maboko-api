@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property int $id
  * @property string $nom
  * @property string $slug
+ * @property string|null $icone
+ * @property string|null $image_url
  * @property-read ArtisanMetier $pivot
  */
 class Metier extends Model
@@ -19,7 +21,15 @@ class Metier extends Model
 
     protected $table = 'metiers';
 
-    protected $fillable = ['nom', 'slug', 'icone', 'description', 'ordre', 'actif'];
+    protected $fillable = [
+        'nom',
+        'slug',
+        'icone',
+        'image_url',
+        'description',
+        'ordre',
+        'actif',
+    ];
 
     protected function casts(): array
     {

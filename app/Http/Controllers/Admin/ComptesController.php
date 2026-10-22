@@ -14,7 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Gestion des artisans et des chauffeurs (Â§5.4.3).
+ * Gestion des artisans et des chauffeurs (§5.4.3).
  *
  * Annuaire complet, validation des inscriptions, activation et suspension.
  */
@@ -26,35 +26,70 @@ class ComptesController extends Controller
         private MoteurBadges $badges,
     ) {}
 
-    /** Annuaire des artisans, filtrable. */
+    /**
+     * Annuaire des artisans, filtrable.
+     *
+     * CORRECTION MAJEURE : on part de la table `users` (rôle artisan) et non
+     * de la table `artisans`. Ainsi, les comptes dont la fiche n'a jamais été
+     * créée (bug historique côté mobile) restent visibles dans l'admin avec
+     * `ficheComplete: false` et `statutValidation: 'sans_fiche'`.
+     *
+     * Filtres acceptés :
+     *  - statut=en_attente|valide|rejete|sans_fiche
+     *  - q=nom|prenom|email|telephone|specialite
+     */
     public function artisans(Request $request): JsonResponse
     {
-        $requete = Artisan::query()
-            ->with(['utilisateur:id,nom,prenom,email,telephone,statut,avatar_url,derniere_connexion_at,role', 'metiers', 'badges', 'abonnementActif.plan'])
-            ->when($request->filled('statut'), fn ($r) => $r->where('statut_validation', $request->string('statut')))
+        $requete = User::query()
+            ->where('role', User::ROLE_ARTISAN)
+            ->with([
+                'artisan' => fn ($q) => $q->with(['metiers', 'badges', 'abonnementActif.plan']),
+            ])
+            ->when($request->filled('statut'), function ($r) use ($request) {
+                $statut = (string) $request->string('statut');
+
+                if ($statut === 'sans_fiche') {
+                    $r->doesntHave('artisan');
+                } else {
+                    $r->whereHas('artisan', fn ($q) => $q->where('statut_validation', $statut));
+                }
+            })
             ->when($request->filled('q'), function ($r) use ($request) {
                 $terme = '%'.$request->string('q').'%';
-                $r->where('specialite', 'like', $terme)
-                    ->orWhereHas('utilisateur', fn ($u) => $u->where('nom', 'like', $terme)->orWhere('email', 'like', $terme));
+                $r->where(function ($q) use ($terme) {
+                    $q->where('nom', 'like', $terme)
+                        ->orWhere('prenom', 'like', $terme)
+                        ->orWhere('email', 'like', $terme)
+                        ->orWhere('telephone', 'like', $terme)
+                        ->orWhereHas('artisan', fn ($a) => $a->where('specialite', 'like', $terme));
+                });
             })
             ->latest();
 
-        return response()->json($requete->paginate(25)->through(fn (Artisan $a) => [
-            'id' => $a->id,
-            'nomComplet' => trim(($a->utilisateur->prenom ?? '').' '.$a->utilisateur->nom),
-            'email' => $a->utilisateur->email,
-            'telephone' => $a->utilisateur->telephone,
-            'specialite' => $a->specialite,
-            'metiers' => $a->metiers->pluck('nom'),
-            'badges' => $a->badges->pluck('nom'),
-            'statutValidation' => $a->statut_validation,
-            'compteSuspendu' => $a->utilisateur->statut === User::STATUT_SUSPENDU,
-            'noteMoyenne' => (float) $a->note_moyenne,
-            'nbMissionsTerminees' => $a->nb_missions_terminees,
-            'plan' => $a->abonnementActif?->plan->nom ?? 'Gratuit',
-            'derniereConnexion' => $a->utilisateur->derniere_connexion_at?->toIso8601String(),
-            'inscritLe' => $a->created_at?->toIso8601String(),
-        ]));
+        return response()->json($requete->paginate(25)->through(function (User $u) {
+            $fiche = $u->artisan;
+
+            return [
+                // `id` = id de la fiche artisan (null si pas de fiche).
+                // Le front admin doit gérer ce cas (badge "Fiche incomplète").
+                'id' => $fiche?->id,
+                'utilisateurId' => $u->id,
+                'nomComplet' => trim(($u->prenom ?? '').' '.$u->nom),
+                'email' => $u->email,
+                'telephone' => $u->telephone,
+                'specialite' => $fiche?->specialite,
+                'metiers' => $fiche?->metiers->pluck('nom') ?? [],
+                'badges' => $fiche?->badges->pluck('nom') ?? [],
+                'statutValidation' => $fiche?->statut_validation ?? 'sans_fiche',
+                'ficheComplete' => $fiche !== null,
+                'compteSuspendu' => $u->statut === User::STATUT_SUSPENDU,
+                'noteMoyenne' => (float) ($fiche?->note_moyenne ?? 0),
+                'nbMissionsTerminees' => $fiche?->nb_missions_terminees ?? 0,
+                'plan' => $fiche?->abonnementActif?->plan->nom ?? 'Gratuit',
+                'derniereConnexion' => $u->derniere_connexion_at?->toIso8601String(),
+                'inscritLe' => $u->created_at?->toIso8601String(),
+            ];
+        }));
     }
 
     /** Annuaire des chauffeurs. */
@@ -74,7 +109,7 @@ class ComptesController extends Controller
             'vehicule' => $c->vehicule_modele,
             'plaque' => $c->plaque_immatriculation,
             'permis' => $c->permis_conduire,
-            'permisCategories' => $c->permis_categories, // 👈 AJOUTÉ ICI
+            'permisCategories' => $c->permis_categories,
             'statutValidation' => $c->statut_validation,
             'compteSuspendu' => $c->utilisateur->statut === User::STATUT_SUSPENDU,
             'enLigne' => (bool) $c->en_ligne,
@@ -94,7 +129,11 @@ class ComptesController extends Controller
         $fiche = $type === 'artisans' ? Artisan::find($id) : Chauffeur::find($id);
 
         if (! $fiche) {
-            return response()->json(['message' => 'Fiche introuvable.'], 404);
+            return response()->json([
+                'message' => $type === 'artisans'
+                    ? "Cet artisan n'a pas encore de fiche. Demandez-lui de la compléter depuis l'application avant de valider."
+                    : 'Fiche introuvable.',
+            ], 404);
         }
 
         $avant = $fiche->statut_validation;
@@ -114,9 +153,9 @@ class ComptesController extends Controller
         if ($fiche->utilisateur) {
             $this->notifications->notifier(
                 $fiche->utilisateur,
-                $donnees['decision'] === 'valide' ? 'Votre profil est validÃ©' : 'Votre profil a Ã©tÃ© refusÃ©',
+                $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
                 $donnees['decision'] === 'valide'
-                    ? 'Vous apparaissez dÃ©sormais dans les recherches Maboko.'
+                    ? 'Vous apparaissez désormais dans les recherches Maboko.'
                     : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
                 type: 'validation_profil',
                 important: true,
@@ -124,16 +163,16 @@ class ComptesController extends Controller
         }
 
         return response()->json([
-            'message' => $donnees['decision'] === 'valide' ? 'Profil validÃ©.' : 'Profil refusÃ©.',
+            'message' => $donnees['decision'] === 'valide' ? 'Profil validé.' : 'Profil refusé.',
             'statutValidation' => $fiche->fresh()->statut_validation,
         ]);
     }
 
     /**
-     * Suspension ou rÃ©activation d'un compte (Â§5.4.3).
+     * Suspension ou réactivation d'un compte (§5.4.3).
      *
-     * La suspension rÃ©voque les sessions ouvertes : sans cela, un compte
-     * suspendu reste actif jusqu'Ã  l'expiration de son jeton.
+     * La suspension révoque les sessions ouvertes : sans cela, un compte
+     * suspendu reste actif jusqu'à l'expiration de son jeton.
      */
     public function basculerSuspension(Request $request, User $utilisateur): JsonResponse
     {
@@ -143,7 +182,7 @@ class ComptesController extends Controller
         ]);
 
         if ($utilisateur->estAdmin()) {
-            return response()->json(['message' => 'Un compte dâ€™administration ne se suspend pas depuis cet Ã©cran.'], 422);
+            return response()->json(['message' => "Un compte d'administration ne se suspend pas depuis cet écran."], 422);
         }
 
         $avant = $utilisateur->statut;
@@ -163,12 +202,12 @@ class ComptesController extends Controller
         );
 
         return response()->json([
-            'message' => $donnees['suspendre'] ? 'Compte suspendu.' : 'Compte rÃ©activÃ©.',
+            'message' => $donnees['suspendre'] ? 'Compte suspendu.' : 'Compte réactivé.',
             'statut' => $nouveau,
         ]);
     }
 
-    /** Attribution manuelle d'un badge (Â§4.5). */
+    /** Attribution manuelle d'un badge (§4.5). */
     public function attribuerBadge(Request $request, Artisan $artisan): JsonResponse
     {
         $donnees = $request->validate([
@@ -182,7 +221,7 @@ class ComptesController extends Controller
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
 
-            return response()->json(['message' => 'Badge retirÃ©.']);
+            return response()->json(['message' => 'Badge retiré.']);
         }
 
         $accorde = $this->badges->attribuerManuellement($artisan, $badge, $request->user()->id);
@@ -192,7 +231,7 @@ class ComptesController extends Controller
         }
 
         return response()->json([
-            'message' => $accorde ? 'Badge attribuÃ©.' : 'Cet artisan possÃ¨de dÃ©jÃ  ce badge.',
+            'message' => $accorde ? 'Badge attribué.' : 'Cet artisan possède déjà ce badge.',
         ], $accorde ? 201 : 200);
     }
 }

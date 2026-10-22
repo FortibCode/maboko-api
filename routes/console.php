@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\RafraichirMusee;
 use App\Models\Story;
 use Illuminate\Support\Facades\Schedule;
 
@@ -19,3 +20,13 @@ Schedule::command('maboko:renouveler-abonnements')
 Schedule::call(function () {
     Story::where('expire_at', '<', now()->subDays(7))->delete();
 })->daily()->name('purge-stories');
+
+/*
+| Musée du savoir-faire (§5.1.7) : propose chaque nuit les artisans qui
+| viennent de passer les seuils (note ≥ 4.5, ≥ 10 missions terminées).
+| L'administrateur valide ensuite manuellement chaque proposition.
+*/
+Schedule::command(RafraichirMusee::class)
+    ->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->onOneServer();

@@ -8,6 +8,7 @@ use App\Http\Resources\ArtisanResource;
 use App\Http\Resources\AvisResource;
 use App\Models\Artisan;
 use App\Models\Metier;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -16,8 +17,8 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 class ArtisanController extends Controller
 {
     /**
-     * Recherche d'artisans (§4.1) : par metier, par zone geographique
-     * et par niveau de competence.
+     * Recherche d'artisans (§4.1) : par métier, par zone géographique
+     * et par niveau de compétence.
      */
     public function index(RechercheArtisanRequest $request): ResourceCollection
     {
@@ -43,7 +44,6 @@ class ArtisanController extends Controller
             $requete->whereHas('utilisateur', fn ($r) => $r->where('ville', $filtres['ville']));
         }
 
-        // Recherche libre sur le nom de l'artisan et sa specialite.
         if (isset($filtres['q'])) {
             $terme = '%'.$filtres['q'].'%';
             $requete->where(function ($r) use ($terme) {
@@ -62,8 +62,6 @@ class ArtisanController extends Controller
             );
         }
 
-        // Le tri par distance n'a de sens qu'avec des coordonnees ; il est
-        // deja applique par le scope, on n'y touche pas.
         $tri = $filtres['tri'] ?? ($geolocalisee ? 'distance' : 'pertinence');
 
         match ($tri) {
@@ -79,7 +77,57 @@ class ArtisanController extends Controller
     }
 
     /**
-     * Fiche complete consultee par un client avant la prise de contact (§5.1.6).
+     * Création OU mise à jour de la fiche de l'artisan connecté (§5.2.1).
+     *
+     * ⚠️ CORRECTIF : cette méthode n'existait pas. C'est la cause des
+     * comptes fantômes — le mobile appelait POST /artisans → 404.
+     *
+     * Idempotent : utilise updateOrCreate sur utilisateur_id. Si la fiche
+     * a déjà été créée automatiquement à l'inscription (OtpController),
+     * elle est simplement mise à jour avec les vraies données du formulaire.
+     */
+    public function store(Request $request): JsonResponse|ArtisanResource
+    {
+        $utilisateur = $request->user();
+
+        if ($utilisateur->role !== User::ROLE_ARTISAN) {
+            return response()->json([
+                'message' => 'Seuls les comptes artisans peuvent créer une fiche.',
+            ], 403);
+        }
+
+        $donnees = $request->validate([
+            'specialite' => 'required|string|max:255',
+            'adresse' => 'required|string|max:255',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'bio' => 'nullable|string|max:2000',
+            'zone_intervention' => 'nullable|string|max:255',
+            'rayon_km' => 'nullable|integer|min:1|max:100',
+            'metiers' => 'nullable|array|max:5',
+            'metiers.*' => 'string|exists:metiers,slug',
+        ]);
+
+        $artisan = Artisan::updateOrCreate(
+            ['utilisateur_id' => $utilisateur->id],
+            collect($donnees)->except('metiers')->all(),
+        );
+
+        if (isset($donnees['metiers'])) {
+            $artisan->metiers()->sync(
+                Metier::whereIn('slug', $donnees['metiers'])->pluck('id'),
+            );
+        }
+
+        $statut = $artisan->wasRecentlyCreated ? 201 : 200;
+
+        return (new ArtisanResource(
+            $artisan->fresh(['utilisateur', 'metiers', 'badges', 'abonnementActif.plan']),
+        ))->response()->setStatusCode($statut);
+    }
+
+    /**
+     * Fiche complète consultée par un client avant la prise de contact (§5.1.6).
      */
     public function show(Artisan $artisan): ArtisanResource
     {
@@ -94,7 +142,7 @@ class ArtisanController extends Controller
         return new ArtisanResource($artisan);
     }
 
-    /** Avis d'un artisan, pagines. */
+    /** Avis d'un artisan, paginés. */
     public function avis(Artisan $artisan): AnonymousResourceCollection
     {
         $avis = $artisan->avis()
@@ -106,7 +154,7 @@ class ArtisanController extends Controller
         return AvisResource::collection($avis);
     }
 
-    /** Fiche de l'artisan connecte. */
+    /** Fiche de l'artisan connecté. */
     public function me(Request $request): JsonResponse|ArtisanResource
     {
         $artisan = Artisan::where('utilisateur_id', $request->user()->id)

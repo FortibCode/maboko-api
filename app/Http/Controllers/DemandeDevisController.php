@@ -2,267 +2,231 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\CreerDemandeDevisRequest;
-use App\Http\Resources\DemandeDevisResource;
-use App\Models\Artisan;
 use App\Models\DemandeDevis;
-use App\Models\Metier;
-use App\Services\ClassementArtisan;
-use App\Services\MediaService;
-use App\Services\MoteurBadges;
+use App\Models\Transaction;
+use App\Models\User;
+use App\Services\JournalAdministration;
 use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
+use Illuminate\Support\Str;
 
-/**
- * Demandes de devis : le coeur de la marketplace.
- *
- * Cote client, ecran « Demande de devis » (§5.1.7) ;
- * cote artisan, ecran « Missions reçues » (§5.2.2).
- */
 class DemandeDevisController extends Controller
 {
     public function __construct(
-        private MediaService $media,
-        private ClassementArtisan $classement,
-        private MoteurBadges $badges,
         private ServiceNotification $notifications,
+        private JournalAdministration $journal,
     ) {}
 
-    /**
-     * Un client y voit ses demandes envoyees, un artisan les missions reçues.
-     */
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request): JsonResponse
     {
-        $utilisateur = $request->user();
+        $user = $request->user();
+        $requete = DemandeDevis::with(['client:id,nom,prenom', 'artisan.utilisateur:id,nom,prenom']);
 
-        $requete = DemandeDevis::query()
-            ->with(['photos', 'metier', 'client:id,nom,prenom,avatar_url,role', 'artisan.utilisateur:id,nom,prenom,avatar_url,role'])
-            ->latest();
-
-        if ($utilisateur->estArtisan()) {
-            $requete->whereHas('artisan', fn ($r) => $r->where('utilisateur_id', $utilisateur->id));
+        if ($user->role === User::ROLE_ARTISAN) {
+            $artisan = $user->artisan;
+            $requete->where('artisan_id', $artisan?->id);
         } else {
-            $requete->where('client_id', $utilisateur->id);
+            $requete->where('client_id', $user->id);
         }
 
-        if ($statut = $request->string('statut')->trim()->value()) {
-            abort_unless(in_array($statut, DemandeDevis::STATUTS, true), 422, 'Statut inconnu.');
-            $requete->where('statut', $statut);
-        }
+        $demandes = $requete->latest()->get()->map(fn ($d) => $this->formaterDemande($d));
 
-        return DemandeDevisResource::collection($requete->paginate(20)->withQueryString());
+        return response()->json(['data' => $demandes]);
     }
 
-    public function show(Request $request, DemandeDevis $demande): DemandeDevisResource
+    public function show(Request $request, DemandeDevis $demande): JsonResponse
     {
         $this->authorize('view', $demande);
 
-        $demande->load(['photos', 'metier', 'avis', 'client:id,nom,prenom,avatar_url,role', 'artisan.utilisateur:id,nom,prenom,avatar_url,role']);
+        $demande->load(['client:id,nom,prenom', 'artisan.utilisateur:id,nom,prenom']);
 
-        return new DemandeDevisResource($demande);
+        return response()->json(['demande' => $this->formaterDemande($demande)]);
     }
 
-    public function store(CreerDemandeDevisRequest $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
-        $this->authorize('create', DemandeDevis::class);
+        $donnees = $request->validate([
+            'artisan_id' => 'required|exists:artisans,id',
+            'titre' => 'required|string|max:150',
+            'description' => 'required|string|max:2000',
+            'adresse' => 'required|string|max:255',
+            'budget_estime' => 'nullable|numeric|min:0',
+            'date_souhaitee' => 'nullable|date',
+            'photos' => 'nullable|array',
+            'photos.*' => 'string',
+        ]);
 
-        $donnees = $request->validated();
-
-        $artisan = Artisan::valides()->findOr($donnees['artisan_id'], fn () => null);
-
-        if (! $artisan) {
-            return response()->json([
-                'message' => "Cet artisan n'accepte pas encore de demandes.",
-            ], 422);
-        }
-
-        if ($artisan->utilisateur_id === $request->user()->id) {
-            return response()->json([
-                'message' => 'Vous ne pouvez pas vous adresser une demande à vous-même.',
-            ], 422);
-        }
-
-        try {
-            $urls = collect($donnees['photos'] ?? [])
-                ->map(fn (string $photo) => $this->media->enregistrerImage($photo, 'demandes'))
-                ->all();
-        } catch (RuntimeException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'errors' => ['photos' => [$e->getMessage()]],
-            ], 422);
-        }
-
-        $demande = DB::transaction(function () use ($donnees, $request, $artisan, $urls) {
-            $demande = DemandeDevis::create([
-                'client_id' => $request->user()->id,
-                'artisan_id' => $artisan->id,
-                'metier_id' => isset($donnees['metier']) ? Metier::where('slug', $donnees['metier'])->value('id') : null,
-                'titre' => $donnees['titre'],
-                'description' => $donnees['description'],
-                'adresse' => $donnees['adresse'],
-                'latitude' => $donnees['latitude'] ?? null,
-                'longitude' => $donnees['longitude'] ?? null,
-                'budget_estime' => $donnees['budget_estime'] ?? null,
-                'date_souhaitee' => $donnees['date_souhaitee'] ?? null,
-                'statut' => DemandeDevis::STATUT_EN_ATTENTE,
-            ]);
-
-            foreach ($urls as $ordre => $url) {
-                $demande->photos()->create(['url' => $url, 'ordre' => $ordre]);
-            }
-
-            return $demande;
-        });
-
-        // Une mission qui n'arrive pas est une mission perdue : c'est
-        // exactement le cas où le repli SMS du §7.2 se justifie.
-        // La fiche artisan porte toujours un utilisateur (clé étrangère
-        // obligatoire et contrainte).
-        $this->notifications->notifier(
-            $artisan->utilisateur,
-            'Nouvelle demande de devis',
-            $demande->titre.' — '.$demande->adresse,
-            type: 'demande_recue',
-            donnees: ['demande_id' => $demande->id],
-            important: true,
-        );
+        $demande = DemandeDevis::create([
+            ...$donnees,
+            'client_id' => $request->user()->id,
+            'statut' => 'en_attente',
+        ]);
 
         return response()->json([
-            'message' => 'Demande envoyée à l’artisan.',
-            'demande' => new DemandeDevisResource($demande->load(['photos', 'metier'])),
+            'message' => 'Demande envoyée.',
+            'demande' => $this->formaterDemande($demande->load('artisan.utilisateur')),
         ], 201);
     }
 
-    /** L'artisan accepte la mission et propose son montant. */
     public function accepter(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $this->authorize('repondre', $demande);
+        $this->authorize('agirArtisan', $demande);
 
         $donnees = $request->validate([
-            'montant_propose' => 'required|numeric|min:0|max:100000000',
+            'montant_propose' => 'required|numeric|min:0',
         ]);
 
         $demande->update([
-            'statut' => DemandeDevis::STATUT_ACCEPTEE,
+            'statut' => 'acceptee',
             'montant_propose' => $donnees['montant_propose'],
-            'acceptee_at' => now(),
         ]);
 
-        $this->prevenirClient(
-            $demande,
-            'Votre demande a été acceptée',
-            $demande->titre.' — devis proposé : '.number_format((float) $donnees['montant_propose'], 0, ',', ' ').' FCFA',
-            important: true,
-        );
-
-        return $this->reponse($demande, 'Mission acceptée.');
+        return response()->json([
+            'message' => 'Mission acceptée.',
+            'demande' => $this->formaterDemande($demande->fresh()),
+        ]);
     }
 
     public function refuser(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $this->authorize('repondre', $demande);
+        $this->authorize('agirArtisan', $demande);
 
         $donnees = $request->validate([
-            'motif_refus' => 'sometimes|nullable|string|max:500',
+            'motif_refus' => 'nullable|string|max:500',
         ]);
 
         $demande->update([
-            'statut' => DemandeDevis::STATUT_REFUSEE,
+            'statut' => 'refusee',
             'motif_refus' => $donnees['motif_refus'] ?? null,
         ]);
 
-        $this->prevenirClient($demande, 'Votre demande a été refusée', $demande->titre);
-
-        return $this->reponse($demande, 'Mission refusée.');
+        return response()->json([
+            'message' => 'Mission refusée.',
+            'demande' => $this->formaterDemande($demande->fresh()),
+        ]);
     }
 
-    public function demarrer(DemandeDevis $demande): JsonResponse
+    public function demarrer(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $this->authorize('demarrer', $demande);
+        $this->authorize('agirArtisan', $demande);
 
-        $demande->update(['statut' => DemandeDevis::STATUT_EN_COURS]);
+        $demande->update(['statut' => 'en_cours']);
 
-        return $this->reponse($demande, 'Intervention démarrée.');
+        return response()->json([
+            'message' => 'Intervention démarrée.',
+            'demande' => $this->formaterDemande($demande->fresh()),
+        ]);
     }
 
     public function terminer(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $this->authorize('terminer', $demande);
+        $this->authorize('agirArtisan', $demande);
 
         $donnees = $request->validate([
-            'montant_final' => 'sometimes|nullable|numeric|min:0|max:100000000',
+            'montant_final' => 'required|numeric|min:0',
         ]);
 
         $demande->update([
-            'statut' => DemandeDevis::STATUT_TERMINEE,
-            'montant_final' => $donnees['montant_final'] ?? $demande->montant_propose,
-            'terminee_at' => now(),
+            'statut' => 'terminee',
+            'montant_final' => $donnees['montant_final'],
         ]);
 
-        // Le compteur de missions terminées alimente les badges et le classement.
-        $artisan = $demande->artisan;
-        $this->classement->recalculer($artisan);
-        $this->badges->reevaluer($artisan->fresh(['badges', 'abonnementActif.plan']));
-
-        $this->prevenirClient(
-            $demande,
-            'Intervention terminée',
-            'Vous pouvez maintenant noter '.($demande->artisan->utilisateur->nom ?? 'votre artisan').'.',
-            important: true,
-        );
-
-        return $this->reponse($demande, 'Intervention terminée. Le client peut maintenant vous noter.');
+        return response()->json([
+            'message' => 'Intervention terminée.',
+            'demande' => $this->formaterDemande($demande->fresh()),
+        ]);
     }
 
     public function annuler(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $this->authorize('annuler', $demande);
+        $this->authorize('annulerClient', $demande);
 
-        $donnees = $request->validate([
-            'motif_refus' => 'sometimes|nullable|string|max:500',
-        ]);
+        $demande->update(['statut' => 'annulee']);
 
-        $demande->update([
-            'statut' => DemandeDevis::STATUT_ANNULEE,
-            'motif_refus' => $donnees['motif_refus'] ?? null,
-        ]);
-
-        return $this->reponse($demande, 'Demande annulée.');
-    }
-
-    private function reponse(DemandeDevis $demande, string $message): JsonResponse
-    {
         return response()->json([
-            'message' => $message,
-            'demande' => new DemandeDevisResource($demande->fresh(['photos', 'metier'])),
+            'message' => 'Demande annulée.',
+            'demande' => $this->formaterDemande($demande->fresh()),
         ]);
     }
 
     /**
-     * Prévient le client de l'évolution de sa demande.
-     * L'acceptation et la clôture sont importantes : elles appellent une
-     * action de sa part, et déclenchent donc le repli SMS si le push échoue.
+     * Paiement simulé du client vers l'artisan.
      */
-    private function prevenirClient(DemandeDevis $demande, string $titre, string $corps, bool $important = false): void
+    public function payer(Request $request, DemandeDevis $demande): JsonResponse
     {
-        $client = $demande->client;
-
-        if (! $client) {
-            return;
+        // 1. Vérifier que l'utilisateur est bien le client de cette demande
+        if ($demande->client_id !== $request->user()->id) {
+            return response()->json(['message' => 'Non autorisé.'], 403);
         }
 
-        $this->notifications->notifier(
-            $client,
-            $titre,
-            $corps,
-            type: 'demande_'.$demande->statut,
-            donnees: ['demande_id' => $demande->id],
-            important: $important,
-        );
+        // 2. Vérifier que la mission est terminée
+        if ($demande->statut !== 'terminee') {
+            return response()->json(['message' => 'La mission n\'est pas encore terminée.'], 422);
+        }
+
+        DB::transaction(function () use ($demande, $request) {
+            // 3. Mettre à jour le statut
+            $demande->update(['statut' => 'payee']);
+
+            // 4. Enregistrer la transaction financière (Simulation)
+            Transaction::create([
+                'utilisateur_id' => $demande->artisan->utilisateur_id,
+                'montant' => $demande->montant_final ?? $demande->montant_propose,
+                'type' => 'credit_mission',
+                'reference' => 'MISSION-' . $demande->id . '-' . Str::random(6),
+                'description' => 'Paiement pour la mission : ' . $demande->titre,
+                'statut' => 'reussi',
+            ]);
+
+            // 5. Enregistrer dans le journal d'administration
+            $this->journal->enregistrer(
+                'demande.payee',
+                $demande,
+                ['statut' => 'terminee'],
+                ['statut' => 'payee', 'montant' => $demande->montant_final],
+            );
+
+            // 6. Notifier l'artisan
+            if ($demande->artisan?->utilisateur) {
+                $this->notifications->notifier(
+                    $demande->artisan->utilisateur,
+                    'Paiement reçu',
+                    "Vous avez reçu un paiement de " . number_format($demande->montant_final, 0, ',', ' ') . " FCFA pour la mission : {$demande->titre}",
+                    type: 'paiement',
+                    important: true,
+                );
+            }
+        });
+
+        return response()->json([
+            'message' => 'Paiement simulé avec succès.',
+            'demande' => $this->formaterDemande($demande->fresh()),
+        ]);
+    }
+
+    /**
+     * Formate la demande pour l'API Flutter.
+     */
+    private function formaterDemande(DemandeDevis $demande): array
+    {
+        return [
+            'id' => $demande->id,
+            'titre' => $demande->titre,
+            'description' => $demande->description,
+            'adresse' => $demande->adresse,
+            'budgetEstime' => (float) $demande->budget_estime,
+            'montantPropose' => (float) $demande->montant_propose,
+            'montantFinal' => (float) $demande->montant_final,
+            'statut' => $demande->statut,
+            'dateSouhaitee' => $demande->date_souhaitee?->format('Y-m-d'),
+            'photos' => $demande->photos ?? [],
+            'motifRefus' => $demande->motif_refus,
+            'clientNom' => $demande->client ? trim($demande->client->prenom . ' ' . $demande->client->nom) : null,
+            'artisanNom' => $demande->artisan?->utilisateur ? trim($demande->artisan->utilisateur->prenom . ' ' . $demande->artisan->utilisateur->nom) : null,
+            'metier' => $demande->metier,
+            'created_at' => $demande->created_at?->toIso8601String(),
+        ];
     }
 }

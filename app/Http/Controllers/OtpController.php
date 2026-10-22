@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Artisan;
 use App\Models\User;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
@@ -13,8 +14,8 @@ class OtpController extends Controller
     public function __construct(private OtpService $otp) {}
 
     /**
-     * Inscription, etape 1 : le formulaire est mis en attente et un code
-     * est envoye par SMS. Aucun compte n'est cree a ce stade.
+     * Inscription, étape 1 : le formulaire est mis en attente et un code
+     * est envoyé par SMS. Aucun compte n'est créé à ce stade.
      */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
@@ -29,16 +30,22 @@ class OtpController extends Controller
         $code = $this->otp->emettrePourInscription($donnees);
 
         return response()->json($this->reponseAvecCode(
-            'Code de validation envoye par SMS.',
+            'Code de validation envoyé par SMS.',
             $code
         ));
     }
 
     /**
-     * Inscription, etape 2 : le code est verifie et le compte est cree
-     * a partir des donnees mises en attente a l'etape 1. Les valeurs
-     * renvoyees par le client ne sont pas reprises, pour qu'il ne puisse
-     * pas modifier son role ou son e-mail entre les deux appels.
+     * Inscription, étape 2 : le code est vérifié et le compte est créé
+     * à partir des données mises en attente à l'étape 1. Les valeurs
+     * renvoyées par le client ne sont pas reprises, pour qu'il ne puisse
+     * pas modifier son rôle ou son e-mail entre les deux appels.
+     *
+     * ⚠️ CORRECTIF : si le rôle est "artisan", une fiche placeholder est
+     * immédiatement créée. Ainsi, aucun compte artisan ne peut exister
+     * sans fiche — même si le mobile n'appelle jamais /artisans (bug
+     * historique). L'artisan la complétera via POST /artisans (idempotent,
+     * voir ArtisanController::store).
      */
     public function verifyAndRegister(Request $request): JsonResponse
     {
@@ -50,7 +57,7 @@ class OtpController extends Controller
         $otp = $this->otp->verifier($request->telephone, $request->code);
 
         if (! $otp || ! $otp->email) {
-            return response()->json(['message' => 'Code invalide ou expire.'], 422);
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
         }
 
         $user = User::create([
@@ -62,20 +69,38 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
+        // ⚠️ CORRECTIF : créer la fiche artisan immédiatement pour éviter
+        // les comptes fantômes (user sans fiche). Le mobile la complétera.
+        if ($user->role === User::ROLE_ARTISAN) {
+            $ville = $user->ville ?? 'Brazzaville';
+
+            Artisan::create([
+                'utilisateur_id' => $user->id,
+                'specialite' => 'À compléter',
+                'adresse' => $ville.', Congo',
+                'latitude' => -4.2634,
+                'longitude' => 15.2429,
+                'bio' => 'Artisan à '.$ville,
+                'zone_intervention' => $ville,
+                'rayon_km' => 10,
+                'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
+            ]);
+        }
+
         $otp->update(['user_id' => $user->id, 'statut' => true]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Compte cree avec succes.',
+            'message' => 'Compte créé avec succès.',
             'token' => $token,
             'user' => $user,
         ], 201);
     }
 
     /**
-     * Mot de passe oublie, etape 1 : envoi du code.
-     * La reponse est identique que le numero existe ou non, afin de ne pas
+     * Mot de passe oublié, étape 1 : envoi du code.
+     * La réponse est identique que le numéro existe ou non, afin de ne pas
      * transformer cet endpoint en annuaire des comptes inscrits.
      */
     public function sendOtp(Request $request): JsonResponse
@@ -92,14 +117,14 @@ class OtpController extends Controller
         }
 
         return response()->json($this->reponseAvecCode(
-            'Si un compte existe avec ce numero, un code vient de lui etre envoye.',
+            'Si un compte existe avec ce numéro, un code vient de lui être envoyé.',
             $code
         ));
     }
 
     /**
-     * Mot de passe oublie, etape 2 : la verification du code remet un jeton
-     * a usage unique, seul sesame accepte ensuite par /reset-password.
+     * Mot de passe oublié, étape 2 : la vérification du code remet un jeton
+     * à usage unique, seul sésame accepté ensuite par /reset-password.
      */
     public function verifyOtp(Request $request): JsonResponse
     {
@@ -111,19 +136,19 @@ class OtpController extends Controller
         $otp = $this->otp->verifier($request->telephone, $request->code);
 
         if (! $otp) {
-            return response()->json(['message' => 'Code invalide ou expire.'], 422);
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
         }
 
         return response()->json([
-            'message' => 'Code verifie.',
+            'message' => 'Code vérifié.',
             'reset_token' => $this->otp->emettreJetonReinitialisation($otp),
             'expire_dans' => OtpService::VALIDITE_JETON_MINUTES * 60,
         ]);
     }
 
     /**
-     * En developpement sans passerelle SMS, le code peut etre renvoye dans la
-     * reponse. Le drapeau vaut false par defaut et doit le rester en production.
+     * En développement sans passerelle SMS, le code peut être renvoyé dans la
+     * réponse. Le drapeau vaut false par défaut et doit le rester en production.
      */
     private function reponseAvecCode(string $message, ?string $code): array
     {

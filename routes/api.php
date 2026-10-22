@@ -19,10 +19,12 @@ use App\Http\Controllers\FavoriController;
 use App\Http\Controllers\InteractionController;
 use App\Http\Controllers\MetierController;
 use App\Http\Controllers\MissionController;
+use App\Http\Controllers\MuseeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\PaiementWebhookController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\PubliciteController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StoryController;
 use App\Http\Controllers\TableauDeBordController;
@@ -121,10 +123,29 @@ Route::prefix('v1')->group(function () {
         | interprete comme un identifiant.
         */
         Route::get('/artisans/me', [ArtisanController::class, 'me']);
+        Route::post('/artisans', [ArtisanController::class, 'store']); // création ou mise à jour de la fiche
         Route::get('/artisans', [ArtisanController::class, 'index']);
         Route::get('/artisans/{artisan}', [ArtisanController::class, 'show']);
         Route::get('/artisans/{artisan}/avis', [ArtisanController::class, 'avis']);
         Route::patch('/artisans/{artisan}', [ArtisanController::class, 'update']);
+
+        /*
+        | Musée du savoir-faire (§5.1.7) — côté mobile.
+        |
+        | Liste des artisans mis en avant, triés par ordre manuel puis par
+        | note. Alimentée automatiquement par les meilleurs artisans, sur
+        | validation de l'administration.
+        */
+        Route::get('/musee', [MuseeController::class, 'index']);
+
+        /*
+        | Publicités (§5.1.7) — affichage côté mobile.
+        |
+        | La publicité active est renvoyée à l'ouverture de l'application.
+        | Le mobile gère lui-même la règle « une fois par jour ».
+        */
+        Route::get('/publicite/active', [PubliciteController::class, 'active']);
+        Route::post('/publicite/{publicite}/clic', [PubliciteController::class, 'clic']);
 
         /*
         | Demandes de devis — cycle de vie complet (§5.1.7, §5.2.2)
@@ -137,6 +158,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/demandes/{demande}/demarrer', [DemandeDevisController::class, 'demarrer']);
         Route::post('/demandes/{demande}/terminer', [DemandeDevisController::class, 'terminer']);
         Route::post('/demandes/{demande}/annuler', [DemandeDevisController::class, 'annuler']);
+        Route::post('/demandes/{demande}/payer', [DemandeDevisController::class, 'payer']);
 
         /*
         | Avis (§2.2)
@@ -159,7 +181,7 @@ Route::prefix('v1')->group(function () {
         | « propositions » est déclaré avant « {course} », sinon le mot serait
         | interprété comme un identifiant.
         */
-        Route::post('/chauffeur', [ChauffeurController::class, 'store']);  // ← AJOUTÉ : création de la fiche
+        Route::post('/chauffeur', [ChauffeurController::class, 'store']);
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);
@@ -214,6 +236,32 @@ Route::prefix('v1')->group(function () {
             // Abonnements et commissions (§5.4.4)
             Route::get('/finances', [FinancesController::class, 'synthese']);
             Route::get('/finances/export', [FinancesController::class, 'exporter']);
+
+            /*
+            | Musée du savoir-faire (§5.1.7) — gestion côté admin.
+            |
+            | Le système propose des candidats (note élevée, missions
+            | nombreuses). L'administrateur valide, ignore 30 jours ou bannit
+            | chaque proposition.
+            */
+            Route::get('/musee', [MuseeController::class, 'adminIndex']);
+            Route::post('/musee/rafraichir', [MuseeController::class, 'rafraichir']);
+            Route::post('/musee/{musee}/valider', [MuseeController::class, 'valider']);
+            Route::post('/musee/{musee}/ignorer', [MuseeController::class, 'ignorer']);
+            Route::post('/musee/{musee}/bannir', [MuseeController::class, 'bannir']);
+            Route::post('/musee/{musee}/retirer', [MuseeController::class, 'retirer']);
+            Route::post('/musee/{musee}/reordonner', [MuseeController::class, 'reordonner']);
+
+            /*
+            | Publicités (§5.1.7) — gestion côté admin.
+            |
+            | Créer, modifier, activer, désactiver une campagne publicitaire.
+            */
+            Route::get('/publicites', [PubliciteController::class, 'index']);
+            Route::post('/publicites', [PubliciteController::class, 'store']);
+            Route::patch('/publicites/{publicite}', [PubliciteController::class, 'update']);
+            Route::post('/publicites/{publicite}/activation', [PubliciteController::class, 'basculerActivation']);
+            Route::delete('/publicites/{publicite}', [PubliciteController::class, 'destroy']);
         });
 
         /*
