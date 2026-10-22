@@ -19,6 +19,10 @@ class ArtisanController extends Controller
     /**
      * Recherche d'artisans (§4.1) : par métier, par zone géographique
      * et par niveau de compétence.
+     *
+     * Seuls les artisans validés apparaissent côté client. La validation
+     * est automatique dès que l'artisan complète sa fiche (voir store()),
+     * mais peut être révoquée manuellement par l'admin.
      */
     public function index(RechercheArtisanRequest $request): ResourceCollection
     {
@@ -44,6 +48,7 @@ class ArtisanController extends Controller
             $requete->whereHas('utilisateur', fn ($r) => $r->where('ville', $filtres['ville']));
         }
 
+        // Recherche libre sur le nom de l'artisan et sa spécialité.
         if (isset($filtres['q'])) {
             $terme = '%'.$filtres['q'].'%';
             $requete->where(function ($r) use ($terme) {
@@ -62,6 +67,8 @@ class ArtisanController extends Controller
             );
         }
 
+        // Le tri par distance n'a de sens qu'avec des coordonnées ; il est
+        // déjà appliqué par le scope, on n'y touche pas.
         $tri = $filtres['tri'] ?? ($geolocalisee ? 'distance' : 'pertinence');
 
         match ($tri) {
@@ -79,12 +86,17 @@ class ArtisanController extends Controller
     /**
      * Création OU mise à jour de la fiche de l'artisan connecté (§5.2.1).
      *
-     * ⚠️ CORRECTIF : cette méthode n'existait pas. C'est la cause des
-     * comptes fantômes — le mobile appelait POST /artisans → 404.
-     *
      * Idempotent : utilise updateOrCreate sur utilisateur_id. Si la fiche
      * a déjà été créée automatiquement à l'inscription (OtpController),
      * elle est simplement mise à jour avec les vraies données du formulaire.
+     *
+     * ⚠️ AUTO-VALIDATION : dès que l'artisan soumet ses vraies données
+     * (spécialité, adresse, coordonnées, métiers), la fiche passe
+     * automatiquement à `statut_validation = 'valide'`. Elle devient donc
+     * immédiatement visible dans la recherche client.
+     *
+     * L'admin conserve la possibilité de rejeter ou suspendre manuellement
+     * un compte via POST /admin/{type}/{id}/validation.
      */
     public function store(Request $request): JsonResponse|ArtisanResource
     {
@@ -107,6 +119,14 @@ class ArtisanController extends Controller
             'metiers' => 'nullable|array|max:5',
             'metiers.*' => 'string|exists:metiers,slug',
         ]);
+
+        // ── AUTO-VALIDATION ────────────────────────────────────────────
+        // La fiche complétée par l'artisan est directement valide. Elle
+        // apparaît donc tout de suite dans la recherche client et peut
+        // recevoir des devis. L'admin peut toujours revenir en arrière
+        // (rejet/suspension) via le back-office.
+        $donnees['statut_validation'] = Artisan::VALIDATION_VALIDE;
+        $donnees['valide_at'] = now();
 
         $artisan = Artisan::updateOrCreate(
             ['utilisateur_id' => $utilisateur->id],
