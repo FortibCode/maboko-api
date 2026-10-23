@@ -13,6 +13,7 @@ use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Gestion des artisans et des chauffeurs (§5.4.3).
@@ -29,15 +30,6 @@ class ComptesController extends Controller
 
     /**
      * Annuaire des artisans, filtrable.
-     *
-     * CORRECTION MAJEURE : on part de la table `users` (rôle artisan) et non
-     * de la table `artisans`. Ainsi, les comptes dont la fiche n'a jamais été
-     * créée (bug historique côté mobile) restent visibles dans l'admin avec
-     * `ficheComplete: false` et `statutValidation: 'sans_fiche'`.
-     *
-     * Filtres acceptés :
-     *  - statut=en_attente|valide|rejete|sans_fiche
-     *  - q=nom|prenom|email|telephone|specialite
      */
     public function artisans(Request $request): JsonResponse
     {
@@ -71,8 +63,6 @@ class ComptesController extends Controller
             $fiche = $u->artisan;
 
             return [
-                // `id` = id de la fiche artisan (null si pas de fiche).
-                // Le front admin doit gérer ce cas (badge "Fiche incomplète").
                 'id' => $fiche?->id,
                 'utilisateurId' => $u->id,
                 'nomComplet' => trim(($u->prenom ?? '').' '.$u->nom),
@@ -151,16 +141,25 @@ class ComptesController extends Controller
             ['statut_validation' => $donnees['decision'], 'motif' => $donnees['motif'] ?? null],
         );
 
+        // ⚠️ CORRECTIF : isole l'envoi de notification dans un try/catch.
+        // Si l'envoi de SMS échoue (ex: pas configuré sur Vercel), 
+        // la validation est quand même sauvegardée et l'admin ne voit pas d'erreur.
         if ($fiche->utilisateur) {
-            $this->notifications->notifier(
-                $fiche->utilisateur,
-                $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
-                $donnees['decision'] === 'valide'
-                    ? 'Vous apparaissez désormais dans les recherches Maboko.'
-                    : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
-                type: 'validation_profil',
-                important: true,
-            );
+            try {
+                $this->notifications->notifier(
+                    $fiche->utilisateur,
+                    $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
+                    $donnees['decision'] === 'valide'
+                        ? 'Vous apparaissez désormais dans les recherches Maboko.'
+                        : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
+                    type: 'validation_profil',
+                    important: true,
+                );
+            } catch (\Throwable $e) {
+                // On log l'erreur pour toi dans storage/logs/laravel.log
+                Log::error("Échec de la notification (SMS/Push) lors de la validation : " . $e->getMessage());
+                // On ne bloque pas la réponse JSON
+            }
         }
 
         return response()->json([
@@ -171,9 +170,6 @@ class ComptesController extends Controller
 
     /**
      * Suspension ou réactivation d'un compte (§5.4.3).
-     *
-     * La suspension révoque les sessions ouvertes : sans cela, un compte
-     * suspendu reste actif jusqu'à l'expiration de son jeton.
      */
     public function basculerSuspension(Request $request, User $utilisateur): JsonResponse
     {
@@ -210,13 +206,6 @@ class ComptesController extends Controller
 
     /**
      * Suppression définitive d'un compte (artisan, chauffeur, client).
-     *
-     * Supprime en cascade : tokens, fiche artisan/chauffeur, avis, demandes,
-     * favoris, abonnements, transactions. Irréversible.
-     *
-     * Protection :
-     *  - impossible de supprimer un compte admin/super_admin
-     *  - impossible de supprimer son propre compte
      */
     public function supprimerUtilisateur(Request $request, User $utilisateur): JsonResponse
     {
@@ -236,30 +225,21 @@ class ComptesController extends Controller
 
         try {
             DB::transaction(function () use ($utilisateur) {
-                // 1. Révoquer tous les tokens Sanctum
                 $utilisateur->tokens()->delete();
 
-                // 2. Fiche artisan et toutes ses dépendances
                 if ($artisan = $utilisateur->artisan) {
                     $artisan->metiers()->detach();
                     $artisan->badges()->detach();
-
-                    // Demandes liées à cet artisan (en tant que prestataire)
                     DB::table('demandes')->where('artisan_id', $artisan->id)->delete();
-                    // Avis reçus
                     DB::table('avis')->where('artisan_id', $artisan->id)->delete();
-                    // Abonnements souscrits
                     DB::table('abonnements')->where('artisan_id', $artisan->id)->delete();
-
                     $artisan->delete();
                 }
 
-                // 3. Fiche chauffeur
                 if ($utilisateur->chauffeur) {
                     $utilisateur->chauffeur->delete();
                 }
 
-                // 4. Données du client (demandes, avis, favoris, follows, transactions)
                 DB::table('demandes')->where('client_id', $utilisateur->id)->delete();
                 DB::table('avis')->where('auteur_id', $utilisateur->id)->delete();
                 DB::table('favoris')->where('utilisateur_id', $utilisateur->id)->delete();
@@ -269,7 +249,6 @@ class ComptesController extends Controller
                     ->delete();
                 DB::table('transactions')->where('utilisateur_id', $utilisateur->id)->delete();
 
-                // 5. Le compte lui-même
                 $utilisateur->delete();
             });
         } catch (\Throwable $e) {
@@ -303,7 +282,6 @@ class ComptesController extends Controller
         if ($request->boolean('retirer')) {
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
-
             return response()->json(['message' => 'Badge retiré.']);
         }
 
