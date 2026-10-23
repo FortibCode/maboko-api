@@ -12,6 +12,7 @@ use App\Services\MoteurBadges;
 use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Gestion des artisans et des chauffeurs (§5.4.3).
@@ -204,6 +205,88 @@ class ComptesController extends Controller
         return response()->json([
             'message' => $donnees['suspendre'] ? 'Compte suspendu.' : 'Compte réactivé.',
             'statut' => $nouveau,
+        ]);
+    }
+
+    /**
+     * Suppression définitive d'un compte (artisan, chauffeur, client).
+     *
+     * Supprime en cascade : tokens, fiche artisan/chauffeur, avis, demandes,
+     * favoris, abonnements, transactions. Irréversible.
+     *
+     * Protection :
+     *  - impossible de supprimer un compte admin/super_admin
+     *  - impossible de supprimer son propre compte
+     */
+    public function supprimerUtilisateur(Request $request, User $utilisateur): JsonResponse
+    {
+        if ($utilisateur->estAdmin()) {
+            return response()->json([
+                'message' => "Les comptes d'administration ne peuvent pas être supprimés depuis cet écran.",
+            ], 403);
+        }
+
+        if ($request->user()->id === $utilisateur->id) {
+            return response()->json([
+                'message' => 'Vous ne pouvez pas supprimer votre propre compte.',
+            ], 403);
+        }
+
+        $identite = trim(($utilisateur->prenom ?? '').' '.$utilisateur->nom);
+
+        try {
+            DB::transaction(function () use ($utilisateur) {
+                // 1. Révoquer tous les tokens Sanctum
+                $utilisateur->tokens()->delete();
+
+                // 2. Fiche artisan et toutes ses dépendances
+                if ($artisan = $utilisateur->artisan) {
+                    $artisan->metiers()->detach();
+                    $artisan->badges()->detach();
+
+                    // Demandes liées à cet artisan (en tant que prestataire)
+                    DB::table('demandes')->where('artisan_id', $artisan->id)->delete();
+                    // Avis reçus
+                    DB::table('avis')->where('artisan_id', $artisan->id)->delete();
+                    // Abonnements souscrits
+                    DB::table('abonnements')->where('artisan_id', $artisan->id)->delete();
+
+                    $artisan->delete();
+                }
+
+                // 3. Fiche chauffeur
+                if ($utilisateur->chauffeur) {
+                    $utilisateur->chauffeur->delete();
+                }
+
+                // 4. Données du client (demandes, avis, favoris, follows, transactions)
+                DB::table('demandes')->where('client_id', $utilisateur->id)->delete();
+                DB::table('avis')->where('auteur_id', $utilisateur->id)->delete();
+                DB::table('favoris')->where('utilisateur_id', $utilisateur->id)->delete();
+                DB::table('follows')
+                    ->where('follower_id', $utilisateur->id)
+                    ->orWhere('artisan_id', $utilisateur->id)
+                    ->delete();
+                DB::table('transactions')->where('utilisateur_id', $utilisateur->id)->delete();
+
+                // 5. Le compte lui-même
+                $utilisateur->delete();
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Suppression impossible : '.$e->getMessage(),
+            ], 500);
+        }
+
+        $this->journal->enregistrer(
+            'compte.supprime',
+            null,
+            [],
+            ['identite' => $identite, 'role' => $utilisateur->role],
+        );
+
+        return response()->json([
+            'message' => 'Compte supprimé définitivement.',
         ]);
     }
 

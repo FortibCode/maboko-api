@@ -217,6 +217,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])
                 ->whereIn('type', ['artisans', 'chauffeurs']);
             Route::post('/utilisateurs/{utilisateur}/suspension', [ComptesController::class, 'basculerSuspension']);
+            Route::delete('/utilisateurs/{utilisateur}', [ComptesController::class, 'supprimerUtilisateur']); // 👈 NOUVELLE LIGNE
             Route::post('/artisans/{artisan}/badge', [ComptesController::class, 'attribuerBadge']);
 
             // Modération du contenu (§5.4.2)
