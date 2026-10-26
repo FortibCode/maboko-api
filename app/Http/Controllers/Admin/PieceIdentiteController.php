@@ -4,20 +4,22 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\VerificationIdentite;
+use App\Services\MediaService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Http\Response;
 
 /**
  * Service des pièces d'identité à l'administration.
  *
- * Route signée et temporaire : le lien n'est valable que dix minutes et ne
- * peut pas être forgé. Les pièces ne sont jamais accessibles par une URL
- * devinable (§7.1).
+ * Route signée et temporaire : le lien vaut dix minutes et ne peut pas être
+ * forgé. Le fichier est déchiffré à la volée et n'est jamais écrit en clair
+ * sur le disque (§7.1).
  */
 class PieceIdentiteController extends Controller
 {
-    public function __invoke(Request $request, VerificationIdentite $verification, string $face): StreamedResponse
+    public function __construct(private MediaService $media) {}
+
+    public function __invoke(Request $request, VerificationIdentite $verification, string $face): Response
     {
         abort_unless($request->hasValidSignature(), 403, 'Lien expiré ou invalide.');
         abort_unless($request->user()?->estAdmin(), 403);
@@ -29,8 +31,18 @@ class PieceIdentiteController extends Controller
             default => null,
         };
 
-        abort_if($chemin === null || ! Storage::disk('local')->exists($chemin), 404);
+        abort_if($chemin === null, 404);
 
-        return Storage::disk('local')->download($chemin);
+        $contenu = $this->media->lirePiecePrivee($chemin);
+
+        abort_if($contenu === null, 404, 'Pièce illisible.');
+
+        return response($contenu, 200, [
+            'Content-Type' => $this->media->typeMimeDe($chemin),
+            // Affichage en ligne, mais jamais mis en cache : ces documents ne
+            // doivent pas rester dans le cache du navigateur de l'administrateur.
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 }

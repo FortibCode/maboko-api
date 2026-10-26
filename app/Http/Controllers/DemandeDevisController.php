@@ -24,11 +24,22 @@ class DemandeDevisController extends Controller
         $user = $request->user();
         $requete = DemandeDevis::with(['client:id,nom,prenom', 'artisan.utilisateur:id,nom,prenom']);
 
+<<<<<<< HEAD
         if ($user->role === User::ROLE_ARTISAN) {
             $artisan = $user->artisan;
             $requete->where('artisan_id', $artisan?->id);
         } else {
             $requete->where('client_id', $user->id);
+=======
+        $requete = DemandeDevis::query()
+            ->with(['photos', 'metier', 'client:id,nom,prenom,avatar_url,role', 'artisan.utilisateur:id,nom,prenom,avatar_url,role'])
+            ->latest();
+
+        if ($utilisateur->estArtisan()) {
+            $requete->whereHas('artisan', fn ($r) => $r->where('utilisateur_id', $utilisateur->id));
+        } elseif (! $utilisateur->estAdmin()) {
+            $requete->where('client_id', $utilisateur->id);
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         }
 
         $demandes = $requete->latest()->get()->map(fn ($d) => $this->formaterDemande($d));

@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Services\MediaService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property int $likes_count
  * @property int $comments_count
  * @property bool|null $aime_par_utilisateur Ajouté par le scope withLikeDe()
+ * @property-read string|null $image_url URL absolue, construite à la lecture
  * @property Carbon|null $created_at
  * @property-read User|null $artisan
  */
@@ -63,5 +66,15 @@ class Post extends Model
                 ->where('user_id', $utilisateurId)
                 ->limit(1),
         ]);
+    }
+
+    /**
+     * Rend l'URL absolue pour le client qui interroge l'API.
+     *
+     * La colonne ne contient qu'un chemin : l'hote se decide a la lecture.
+     */
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::get(fn (?string $valeur) => MediaService::absolue($valeur));
     }
 }

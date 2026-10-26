@@ -30,8 +30,14 @@ class OtpController extends Controller
         $code = $this->otp->emettrePourInscription($donnees);
 
         return response()->json($this->reponseAvecCode(
+<<<<<<< HEAD
             'Code de validation envoyé par SMS.',
             $code
+=======
+            'Code de validation envoye par SMS.',
+            $code,
+            $donnees['telephone'],
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         ));
     }
 
@@ -117,8 +123,15 @@ class OtpController extends Controller
         }
 
         return response()->json($this->reponseAvecCode(
+<<<<<<< HEAD
             'Si un compte existe avec ce numéro, un code vient de lui être envoyé.',
             $code
+=======
+            'Si un compte existe avec ce numero, un code vient de lui etre envoye.',
+            $code,
+            $request->telephone,
+            OtpService::CONTEXTE_REINITIALISATION,
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         ));
     }
 
@@ -150,11 +163,15 @@ class OtpController extends Controller
      * En développement sans passerelle SMS, le code peut être renvoyé dans la
      * réponse. Le drapeau vaut false par défaut et doit le rester en production.
      */
-    private function reponseAvecCode(string $message, ?string $code): array
-    {
+    private function reponseAvecCode(
+        string $message,
+        ?string $code,
+        ?string $telephone = null,
+        string $contexte = OtpService::CONTEXTE_INSCRIPTION,
+    ): array {
         $reponse = ['message' => $message];
 
-        if ($code !== null && $this->otp->codeExposable()) {
+        if ($code !== null && $this->otp->codeExposable($telephone, $contexte)) {
             $reponse['debug_code'] = $code;
         }
 

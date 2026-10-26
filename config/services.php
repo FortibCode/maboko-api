@@ -2,6 +2,12 @@
 
 return [
 
+    'google' => [
+        // Identifiant client OAuth du projet Google Cloud de l'application
+        // mobile : c'est l'audience que le jeton d'identité doit porter.
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

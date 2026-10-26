@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Admin\ArtisanAdminResource;
+use App\Http\Resources\Admin\ChauffeurAdminResource;
+use App\Http\Resources\Admin\UserAdminResource;
 use App\Models\Artisan;
 use App\Models\Badge;
 use App\Models\Chauffeur;
@@ -12,11 +15,15 @@ use App\Services\MoteurBadges;
 use App\Services\ServiceNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+<<<<<<< HEAD
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+=======
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
 
 /**
- * Gestion des artisans et des chauffeurs (§5.4.3).
+ * Gestion des artisans, des chauffeurs et de l'ensemble des utilisateurs (§5.4.3).
  *
  * Annuaire complet, validation des inscriptions, activation et suspension.
  */
@@ -28,6 +35,7 @@ class ComptesController extends Controller
         private MoteurBadges $badges,
     ) {}
 
+<<<<<<< HEAD
     /**
      * Annuaire des artisans, filtrable.
      */
@@ -47,6 +55,36 @@ class ComptesController extends Controller
                     $r->whereHas('artisan', fn ($q) => $q->where('statut_validation', $statut));
                 }
             })
+=======
+    /** Annuaire global de tous les utilisateurs. */
+    public function utilisateurs(Request $request): AnonymousResourceCollection
+    {
+        $utilisateurs = User::query()
+            ->when($request->filled('role'), fn ($r) => $r->where('role', $request->string('role')))
+            ->when($request->filled('statut'), fn ($r) => $r->where('statut', $request->string('statut')))
+            ->when($request->filled('q'), function ($r) use ($request) {
+                $terme = '%'.$request->string('q').'%';
+                $r->where('nom', 'like', $terme)
+                    ->orWhere('prenom', 'like', $terme)
+                    ->orWhere('email', 'like', $terme)
+                    ->orWhere('telephone', 'like', $terme);
+            })
+            ->latest()
+            ->paginate(25);
+
+        return UserAdminResource::collection($utilisateurs);
+    }
+
+    /** Annuaire des artisans, filtrable. */
+    public function artisans(Request $request): AnonymousResourceCollection
+    {
+        $artisans = Artisan::query()
+            ->with([
+                'utilisateur:id,nom,prenom,email,telephone,statut,avatar_url,derniere_connexion_at,role',
+                'metiers', 'badges', 'abonnementActif.plan',
+            ])
+            ->when($request->filled('statut'), fn ($r) => $r->where('statut_validation', $request->string('statut')))
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
             ->when($request->filled('q'), function ($r) use ($request) {
                 $terme = '%'.$request->string('q').'%';
                 $r->where(function ($q) use ($terme) {
@@ -57,8 +95,10 @@ class ComptesController extends Controller
                         ->orWhereHas('artisan', fn ($a) => $a->where('specialite', 'like', $terme));
                 });
             })
-            ->latest();
+            ->latest()
+            ->paginate(25);
 
+<<<<<<< HEAD
         return response()->json($requete->paginate(25)->through(function (User $u) {
             $fiche = $u->artisan;
 
@@ -81,16 +121,21 @@ class ComptesController extends Controller
                 'inscritLe' => $u->created_at?->toIso8601String(),
             ];
         }));
+=======
+        return ArtisanAdminResource::collection($artisans);
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
     }
 
     /** Annuaire des chauffeurs. */
-    public function chauffeurs(Request $request): JsonResponse
+    public function chauffeurs(Request $request): AnonymousResourceCollection
     {
-        $requete = Chauffeur::query()
+        $chauffeurs = Chauffeur::query()
             ->with('utilisateur:id,nom,prenom,email,telephone,statut,derniere_connexion_at,role')
             ->when($request->filled('statut'), fn ($r) => $r->where('statut_validation', $request->string('statut')))
-            ->latest();
+            ->latest()
+            ->paginate(25);
 
+<<<<<<< HEAD
         return response()->json($requete->paginate(25)->through(fn (Chauffeur $c) => [
             'id' => $c->id,
             'nomComplet' => trim(($c->utilisateur->prenom ?? '').' '.$c->utilisateur->nom),
@@ -107,6 +152,9 @@ class ComptesController extends Controller
             'nbCoursesTerminees' => $c->nb_courses_terminees,
             'inscritLe' => $c->created_at?->toIso8601String(),
         ]));
+=======
+        return ChauffeurAdminResource::collection($chauffeurs);
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
     }
 
     /** Validation d'une inscription artisan ou chauffeur. */
@@ -117,6 +165,7 @@ class ComptesController extends Controller
             'motif' => 'sometimes|nullable|string|max:500',
         ]);
 
+<<<<<<< HEAD
         $fiche = $type === 'artisans' ? Artisan::find($id) : Chauffeur::find($id);
 
         if (! $fiche) {
@@ -126,6 +175,12 @@ class ComptesController extends Controller
                     : 'Fiche introuvable.',
             ], 404);
         }
+=======
+        /** @var Artisan|Chauffeur $fiche */
+        $fiche = $type === 'artisans'
+            ? Artisan::findOrFail($id)
+            : Chauffeur::findOrFail($id);
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
 
         $avant = $fiche->statut_validation;
 
@@ -141,6 +196,7 @@ class ComptesController extends Controller
             ['statut_validation' => $donnees['decision'], 'motif' => $donnees['motif'] ?? null],
         );
 
+<<<<<<< HEAD
         // ⚠️ CORRECTIF : isole l'envoi de notification dans un try/catch.
         // Si l'envoi de SMS échoue (ex: pas configuré sur Vercel), 
         // la validation est quand même sauvegardée et l'admin ne voit pas d'erreur.
@@ -161,6 +217,18 @@ class ComptesController extends Controller
                 // On ne bloque pas la réponse JSON
             }
         }
+=======
+        // La clé étrangère est obligatoire et contrainte : l'utilisateur existe.
+        $this->notifications->notifier(
+            $fiche->utilisateur,
+            $donnees['decision'] === 'valide' ? 'Votre profil est validé' : 'Votre profil a été refusé',
+            $donnees['decision'] === 'valide'
+                ? 'Vous apparaissez désormais dans les recherches Maboko.'
+                : ($donnees['motif'] ?? 'Contactez le support pour en savoir plus.'),
+            type: 'validation_profil',
+            important: true,
+        );
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
 
         return response()->json([
             'message' => $donnees['decision'] === 'valide' ? 'Profil validé.' : 'Profil refusé.',

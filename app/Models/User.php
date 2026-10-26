@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Services\MediaService;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -17,6 +20,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string|null $avatar_url
  * @property string $role
  * @property string $statut
+ * @property Carbon|null $derniere_connexion_at
  */
 class User extends Authenticatable
 {
@@ -172,5 +176,15 @@ class User extends Authenticatable
     public function verificationIdentite(): HasOne
     {
         return $this->hasOne(VerificationIdentite::class)->latestOfMany();
+    }
+
+    /**
+     * Rend l'URL absolue pour le client qui interroge l'API.
+     *
+     * La colonne ne contient qu'un chemin : l'hote se decide a la lecture.
+     */
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::get(fn (?string $valeur) => MediaService::absolue($valeur));
     }
 }

@@ -22,6 +22,7 @@ Schedule::call(function () {
 })->daily()->name('purge-stories');
 
 /*
+<<<<<<< HEAD
 | Musée du savoir-faire (§5.1.7) : propose chaque nuit les artisans qui
 | viennent de passer les seuils (note ≥ 4.5, ≥ 10 missions terminées).
 | L'administrateur valide ensuite manuellement chaque proposition.
@@ -30,3 +31,12 @@ Schedule::command(RafraichirMusee::class)
     ->dailyAt('03:30')
     ->withoutOverlapping()
     ->onOneServer();
+=======
+| Sauvegarde quotidienne de la base et des fichiers privés (§7.1).
+| Quatorze jours de rétention : au-delà, le disque se remplit.
+*/
+Schedule::command('maboko:sauvegarder')
+    ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->onOneServer();
+>>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61

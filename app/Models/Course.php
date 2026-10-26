@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property int $utilisateur_id
  * @property string $statut
  * @property string $type_vehicule
+ * @property float|null $distance_prise_en_charge Distance chauffeur → départ, ajoutée aux propositions
  * @property Carbon|null $acceptee_at
  * @property Carbon|null $prise_en_charge_at
  * @property Carbon|null $terminee_at

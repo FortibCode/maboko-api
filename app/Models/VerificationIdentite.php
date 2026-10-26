@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $motif_rejet
  * @property Carbon|null $verifie_at
  * @property Carbon|null $created_at
+ * @property-read User $user
  */
 class VerificationIdentite extends Model
 {
