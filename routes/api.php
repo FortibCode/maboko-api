@@ -22,11 +22,8 @@ use App\Http\Controllers\FavoriController;
 use App\Http\Controllers\InteractionController;
 use App\Http\Controllers\MetierController;
 use App\Http\Controllers\MissionController;
-<<<<<<< HEAD
 use App\Http\Controllers\MuseeController;
-=======
 use App\Http\Controllers\MoyenPaiementController;
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\PaiementWebhookController;
@@ -53,11 +50,6 @@ Route::prefix('v1')->group(function () {
 
     /*
     | Routes publiques
-    |
-    | L'inscription passe obligatoirement par la verification OTP :
-    | send-register-otp met le formulaire en attente, verify-register-otp
-    | cree le compte. Il n'existe volontairement aucune route d'inscription
-    | directe, qui contournerait la verification exigee au paragraphe 7.1.
     */
     Route::post('/send-register-otp', [OtpController::class, 'sendRegisterOtp'])
         ->middleware('throttle:otp-envoi');
@@ -71,8 +63,6 @@ Route::prefix('v1')->group(function () {
     Route::post('/login/google', [AuthController::class, 'loginGoogle'])
         ->middleware('throttle:connexion');
 
-    // Mot de passe oublie : envoi du code, verification, puis changement
-    // du mot de passe contre le jeton a usage unique remis a l'etape 2.
     Route::post('/send-otp', [OtpController::class, 'sendOtp'])
         ->middleware('throttle:otp-envoi');
 
@@ -82,10 +72,6 @@ Route::prefix('v1')->group(function () {
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])
         ->middleware('throttle:otp-verif');
 
-    /*
-    | Notifications de paiement des opérateurs Mobile Money.
-    | Publiques par nature : c'est la signature qui les authentifie.
-    */
     Route::post('/webhooks/paiement/{operateur}', PaiementWebhookController::class)
         ->middleware('throttle:120,1');
 
@@ -94,83 +80,41 @@ Route::prefix('v1')->group(function () {
     */
     Route::middleware('auth:sanctum')->group(function () {
 
-        /*
-        | Autorisation des canaux privés Reverb.
-        |
-        | Laravel place cette route sous le middleware « web » par défaut,
-        | ce qui suppose une session. L'application mobile s'authentifie par
-        | jeton : elle a donc besoin de sa propre entrée.
-        */
         Route::post('/diffusion/auth', function (Request $requete) {
             return Broadcast::auth($requete);
         });
 
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'me']);
-        // Modification des informations du compte.
         Route::patch('/compte', [AuthController::class, 'modifierProfil']);
-        // Photo de profil reelle, en remplacement des avatars figes.
         Route::post('/compte/avatar', [AuthController::class, 'enregistrerAvatar']);
         Route::delete('/compte/avatar', [AuthController::class, 'supprimerAvatar']);
         Route::delete('/compte', [AuthController::class, 'supprimerCompte']);
 
-        /*
-        | Tableau de bord — « Mon profil » client (§5.1.10)
-        | et « Tableau de bord artisan » (§5.2.1)
-        */
         Route::get('/tableau-de-bord', TableauDeBordController::class);
 
-        /*
-        | Mes artisans de confiance (§5.1.10)
-        */
         Route::get('/favoris', [FavoriController::class, 'index']);
         Route::post('/favoris/{artisan}', [FavoriController::class, 'basculer']);
 
-        /*
-        | Referentiel des metiers — ecran « Explorer les metiers » (§5.1.5)
-        */
         Route::get('/metiers', [MetierController::class, 'index']);
         Route::get('/metiers/{slug}', [MetierController::class, 'show']);
 
-        /*
-        | Artisans — recherche et fiche detaillee (§4.1, §5.1.6)
-        |
-        | « me » est declare avant « {artisan} », sinon le mot serait
-        | interprete comme un identifiant.
-        */
+        // Artisans
         Route::get('/artisans/me', [ArtisanController::class, 'me']);
-<<<<<<< HEAD
-        Route::post('/artisans', [ArtisanController::class, 'store']); // création ou mise à jour de la fiche
-=======
-        // Creation de sa propre fiche par un artisan inscrit.
         Route::post('/artisans', [ArtisanController::class, 'store']);
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         Route::get('/artisans', [ArtisanController::class, 'index']);
         Route::get('/artisans/{artisan}', [ArtisanController::class, 'show']);
         Route::get('/artisans/{artisan}/avis', [ArtisanController::class, 'avis']);
         Route::patch('/artisans/{artisan}', [ArtisanController::class, 'update']);
 
-        /*
-        | Musée du savoir-faire (§5.1.7) — côté mobile.
-        |
-        | Liste des artisans mis en avant, triés par ordre manuel puis par
-        | note. Alimentée automatiquement par les meilleurs artisans, sur
-        | validation de l'administration.
-        */
+        // Musée
         Route::get('/musee', [MuseeController::class, 'index']);
 
-        /*
-        | Publicités (§5.1.7) — affichage côté mobile.
-        |
-        | La publicité active est renvoyée à l'ouverture de l'application.
-        | Le mobile gère lui-même la règle « une fois par jour ».
-        */
+        // Publicités
         Route::get('/publicite/active', [PubliciteController::class, 'active']);
         Route::post('/publicite/{publicite}/clic', [PubliciteController::class, 'clic']);
 
-        /*
-        | Demandes de devis — cycle de vie complet (§5.1.7, §5.2.2)
-        */
+        // Demandes de devis
         Route::get('/demandes', [DemandeDevisController::class, 'index']);
         Route::post('/demandes', [DemandeDevisController::class, 'store']);
         Route::get('/demandes/{demande}', [DemandeDevisController::class, 'show']);
@@ -181,30 +125,18 @@ Route::prefix('v1')->group(function () {
         Route::post('/demandes/{demande}/annuler', [DemandeDevisController::class, 'annuler']);
         Route::post('/demandes/{demande}/payer', [DemandeDevisController::class, 'payer']);
 
-        /*
-        | Avis (§2.2)
-        */
         Route::post('/demandes/{demande}/avis', [AvisController::class, 'store']);
         Route::post('/avis/{avis}/signaler', [AvisController::class, 'signaler']);
 
-        /*
-        | Allô Chauffeur — côté client (§5.1.8)
-        */
+        // Allô Chauffeur
         Route::post('/courses/estimation', [CourseController::class, 'estimer']);
         Route::get('/courses', [CourseController::class, 'index']);
         Route::post('/courses', [CourseController::class, 'store']);
         Route::get('/courses/{course}', [CourseController::class, 'show']);
         Route::post('/courses/{course}/annuler', [CourseController::class, 'annuler']);
 
-        /*
-        | Allô Chauffeur — côté chauffeur (§5.3)
-        |
-        | « propositions » est déclaré avant « {course} », sinon le mot serait
-        | interprété comme un identifiant.
-        */
         Route::post('/chauffeur', [ChauffeurController::class, 'store']);
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
-        // Depot de la fiche vehicule par le chauffeur lui-meme.
         Route::post('/chauffeur', [ChauffeurController::class, 'enregistrerFiche']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);
@@ -217,60 +149,45 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
 
-        /*
-        | Table « missions » : remplacée par /demandes, conservée le temps de
-        | la reprise de données puis à retirer.
-        */
         Route::apiResource('missions', MissionController::class);
 
         /*
         |------------------------------------------------------------------
         | Back-office administrateur (§5.4)
         |------------------------------------------------------------------
-        |
-        | Réservé aux comptes d'administration. Chaque action qui modifie un
-        | compte ou supprime un contenu est journalisée (table audit_logs).
         */
         Route::middleware('role:admin,super_admin')->prefix('admin')->group(function () {
 
             Route::get('/tableau-de-bord', AdminTableauDeBordController::class);
 
-            // Gestion des comptes et utilisateurs (§5.4.3)
+            // Gestion des comptes
             Route::get('/utilisateurs', [ComptesController::class, 'utilisateurs']);
             Route::get('/artisans', [ComptesController::class, 'artisans']);
             Route::get('/chauffeurs', [ComptesController::class, 'chauffeurs']);
-            Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])
-                ->whereIn('type', ['artisans', 'chauffeurs']);
+            Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])->whereIn('type', ['artisans', 'chauffeurs']);
             Route::post('/utilisateurs/{utilisateur}/suspension', [ComptesController::class, 'basculerSuspension']);
-            Route::delete('/utilisateurs/{utilisateur}', [ComptesController::class, 'supprimerUtilisateur']); // 👈 NOUVELLE LIGNE
+            Route::delete('/utilisateurs/{utilisateur}', [ComptesController::class, 'supprimerUtilisateur']);
             Route::post('/artisans/{artisan}/badge', [ComptesController::class, 'attribuerBadge']);
 
-            // Modération du contenu (§5.4.2)
+            // Modération
             Route::get('/signalements', [ModerationController::class, 'signalements']);
             Route::post('/signalements/{signalement}', [ModerationController::class, 'traiterSignalement']);
             Route::post('/avis/{avis}/masquer', [ModerationController::class, 'masquerAvis']);
             Route::post('/commentaires/{commentaire}/masquer', [ModerationController::class, 'supprimerCommentaire']);
 
-            // Vérification d'identité (§4.5)
+            // Vérification d'identité
             Route::get('/verifications', [ModerationController::class, 'verifications']);
             Route::post('/verifications/{verification}', [ModerationController::class, 'traiterVerification']);
 
-            // Litiges (§3.4)
+            // Litiges
             Route::get('/litiges', [ModerationController::class, 'litiges']);
             Route::post('/litiges/{litige}', [ModerationController::class, 'traiterLitige']);
 
-            // Abonnements et commissions (§5.4.4)
+            // Finances
             Route::get('/finances', [FinancesController::class, 'synthese']);
             Route::get('/finances/export', [FinancesController::class, 'exporter']);
 
-<<<<<<< HEAD
-            /*
-            | Musée du savoir-faire (§5.1.7) — gestion côté admin.
-            |
-            | Le système propose des candidats (note élevée, missions
-            | nombreuses). L'administrateur valide, ignore 30 jours ou bannit
-            | chaque proposition.
-            */
+            // Musée
             Route::get('/musee', [MuseeController::class, 'adminIndex']);
             Route::post('/musee/rafraichir', [MuseeController::class, 'rafraichir']);
             Route::post('/musee/{musee}/valider', [MuseeController::class, 'valider']);
@@ -279,60 +196,42 @@ Route::prefix('v1')->group(function () {
             Route::post('/musee/{musee}/retirer', [MuseeController::class, 'retirer']);
             Route::post('/musee/{musee}/reordonner', [MuseeController::class, 'reordonner']);
 
-            /*
-            | Publicités (§5.1.7) — gestion côté admin.
-            |
-            | Créer, modifier, activer, désactiver une campagne publicitaire.
-            */
+            // Publicités
             Route::get('/publicites', [PubliciteController::class, 'index']);
             Route::post('/publicites', [PubliciteController::class, 'store']);
             Route::patch('/publicites/{publicite}', [PubliciteController::class, 'update']);
             Route::post('/publicites/{publicite}/activation', [PubliciteController::class, 'basculerActivation']);
             Route::delete('/publicites/{publicite}', [PubliciteController::class, 'destroy']);
-=======
+
             // Administration des métiers
             Route::get('/metiers', [AdminMetierController::class, 'index']);
             Route::post('/metiers', [AdminMetierController::class, 'store']);
             Route::put('/metiers/{metier}', [AdminMetierController::class, 'update']);
             Route::delete('/metiers/{metier}', [AdminMetierController::class, 'destroy']);
 
-            // Diffusion de notifications et logs d'audit
+            // Notifications et logs
             Route::post('/notifications/broadcast', [NotificationBroadcastController::class, 'diffuser']);
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         });
 
-        /*
-        | Pièces d'identité : lien signé, valable dix minutes.
-        */
-        Route::get('/admin/pieces/{verification}/{face}', PieceIdentiteController::class)
-            ->name('admin.piece');
+        Route::get('/admin/pieces/{verification}/{face}', PieceIdentiteController::class)->name('admin.piece');
 
-        /*
-        | Abonnements et paiements (§4.5, §5.2.4)
-        */
+        // Abonnements et paiements
         Route::get('/plans', [AbonnementController::class, 'plans']);
         Route::get('/abonnement', [AbonnementController::class, 'actuel']);
         Route::post('/abonnement', [AbonnementController::class, 'souscrire']);
-        // Moyens de paiement enregistres (§5.1.10) : operateur et numero,
-        // rien qui permette de declencher un paiement seul.
         Route::get('/moyens-paiement', [MoyenPaiementController::class, 'index']);
         Route::post('/moyens-paiement', [MoyenPaiementController::class, 'store']);
         Route::post('/moyens-paiement/{moyenPaiement}/defaut', [MoyenPaiementController::class, 'definirParDefaut']);
         Route::delete('/moyens-paiement/{moyenPaiement}', [MoyenPaiementController::class, 'destroy']);
-
         Route::get('/transactions', [AbonnementController::class, 'transactions']);
 
-        /*
-        | Vérification d'identité, préalable au badge « Profil vérifié » (§4.5)
-        */
+        // Vérification d'identité (pour le RCCM / Carte d'identité)
         Route::get('/verification-identite', [VerificationIdentiteController::class, 'afficher']);
         Route::post('/verification-identite', [VerificationIdentiteController::class, 'deposer']);
         Route::get('/transactions/{reference}', [AbonnementController::class, 'suivreTransaction']);
 
-        /*
-        | Messagerie (§5.1.9)
-        */
+        // Messagerie
         Route::get('/conversations', [ConversationController::class, 'index']);
         Route::post('/conversations', [ConversationController::class, 'store']);
         Route::get('/conversations/support', [ConversationController::class, 'support']);
@@ -340,33 +239,31 @@ Route::prefix('v1')->group(function () {
         Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'envoyer']);
         Route::post('/conversations/{conversation}/lu', [ConversationController::class, 'marquerLu']);
 
-        /*
-        | Fil d'actualité (§5.1.4)
-        */
+        // Fil d'actualité
         Route::get('/posts', [PostController::class, 'index']);
         Route::post('/posts', [PostController::class, 'store']);
         Route::delete('/posts/{post}', [PostController::class, 'destroy']);
-
         Route::post('/posts/{post}/like', [InteractionController::class, 'basculerLike']);
         Route::get('/posts/{post}/commentaires', [InteractionController::class, 'commentaires']);
         Route::post('/posts/{post}/commentaires', [InteractionController::class, 'commenter']);
         Route::delete('/commentaires/{commentaire}', [InteractionController::class, 'supprimerCommentaire']);
 
+        // Stories
         Route::get('/stories', [StoryController::class, 'index']);
         Route::post('/stories', [StoryController::class, 'store']);
+        Route::get('/stories/me', [StoryController::class, 'mesStories']);
+        Route::get('/stories/{story}/vues', [StoryController::class, 'voirVues']);
+        Route::post('/stories/{story}/vue', [StoryController::class, 'marquerVue']);
+        Route::delete('/stories/{story}', [StoryController::class, 'destroy']);
 
-        // Suivre un artisan alimente le fil personnalisé.
         Route::post('/suivre/{artisan}', [InteractionController::class, 'basculerAbonnement']);
-
         Route::apiResource('reports', ReportController::class)->only(['index', 'store']);
 
         Route::get('/bookings', [BookingController::class, 'index']);
         Route::post('/bookings', [BookingController::class, 'store']);
         Route::patch('/bookings/{id}/status', [BookingController::class, 'updateStatus']);
 
-        /*
-        | Notifications et appareils (§6.2)
-        */
+        // Notifications et appareils
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/{notification}/lu', [NotificationController::class, 'marquerLue']);
         Route::post('/notifications/lu', [NotificationController::class, 'toutMarquerLu']);

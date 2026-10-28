@@ -12,11 +12,8 @@
         "laravel/reverb": "^1.11",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
-<<<<<<< HEAD
+        "league/flysystem-aws-s3-v3": "^3.0",
         "predis/predis": "^3.6"
-=======
-        "league/flysystem-aws-s3-v3": "^3.0"
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
