@@ -21,28 +21,24 @@ class DemandeDevisController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $requete = DemandeDevis::with(['client:id,nom,prenom', 'artisan.utilisateur:id,nom,prenom']);
+        $utilisateur = $request->user();
 
-<<<<<<< HEAD
-        if ($user->role === User::ROLE_ARTISAN) {
-            $artisan = $user->artisan;
-            $requete->where('artisan_id', $artisan?->id);
-        } else {
-            $requete->where('client_id', $user->id);
-=======
         $requete = DemandeDevis::query()
-            ->with(['photos', 'metier', 'client:id,nom,prenom,avatar_url,role', 'artisan.utilisateur:id,nom,prenom,avatar_url,role'])
+            ->with([
+                'photos',
+                'metier',
+                'client:id,nom,prenom,avatar_url,role',
+                'artisan.utilisateur:id,nom,prenom,avatar_url,role',
+            ])
             ->latest();
 
         if ($utilisateur->estArtisan()) {
             $requete->whereHas('artisan', fn ($r) => $r->where('utilisateur_id', $utilisateur->id));
         } elseif (! $utilisateur->estAdmin()) {
             $requete->where('client_id', $utilisateur->id);
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
         }
 
-        $demandes = $requete->latest()->get()->map(fn ($d) => $this->formaterDemande($d));
+        $demandes = $requete->get()->map(fn ($d) => $this->formaterDemande($d));
 
         return response()->json(['data' => $demandes]);
     }
@@ -162,26 +158,19 @@ class DemandeDevisController extends Controller
         ]);
     }
 
-    /**
-     * Paiement simulé du client vers l'artisan.
-     */
     public function payer(Request $request, DemandeDevis $demande): JsonResponse
     {
-        // 1. Vérifier que l'utilisateur est bien le client de cette demande
         if ($demande->client_id !== $request->user()->id) {
             return response()->json(['message' => 'Non autorisé.'], 403);
         }
 
-        // 2. Vérifier que la mission est terminée
         if ($demande->statut !== 'terminee') {
             return response()->json(['message' => 'La mission n\'est pas encore terminée.'], 422);
         }
 
-        DB::transaction(function () use ($demande, $request) {
-            // 3. Mettre à jour le statut
+        DB::transaction(function () use ($demande) {
             $demande->update(['statut' => 'payee']);
 
-            // 4. Enregistrer la transaction financière (Simulation)
             Transaction::create([
                 'utilisateur_id' => $demande->artisan->utilisateur_id,
                 'montant' => $demande->montant_final ?? $demande->montant_propose,
@@ -191,7 +180,6 @@ class DemandeDevisController extends Controller
                 'statut' => 'reussi',
             ]);
 
-            // 5. Enregistrer dans le journal d'administration
             $this->journal->enregistrer(
                 'demande.payee',
                 $demande,
@@ -199,7 +187,6 @@ class DemandeDevisController extends Controller
                 ['statut' => 'payee', 'montant' => $demande->montant_final],
             );
 
-            // 6. Notifier l'artisan
             if ($demande->artisan?->utilisateur) {
                 $this->notifications->notifier(
                     $demande->artisan->utilisateur,
@@ -217,9 +204,6 @@ class DemandeDevisController extends Controller
         ]);
     }
 
-    /**
-     * Formate la demande pour l'API Flutter.
-     */
     private function formaterDemande(DemandeDevis $demande): array
     {
         return [
