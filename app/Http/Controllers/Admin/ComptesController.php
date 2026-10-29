@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Gestion des artisans, des chauffeurs et de l'ensemble des utilisateurs (§5.4.3).
@@ -208,11 +209,12 @@ class ComptesController extends Controller
 
     /**
      * Suppression définitive d'un compte.
-     * Le modèle User n'utilise PAS SoftDeletes, donc delete() supprime vraiment.
+     * Utilise forceDelete() pour vraiment libérer le téléphone et l'email.
      */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        $utilisateur = User::find($utilisateurId);
+        // withTrashed() trouve l'utilisateur même s'il a été "soft deleted"
+        $utilisateur = User::withTrashed()->find($utilisateurId);
 
         if (! $utilisateur) {
             return response()->json([
@@ -246,15 +248,21 @@ class ComptesController extends Controller
                     $artisan->demandes()->delete();
                     $artisan->avis()->delete();
                     $artisan->abonnements()->delete();
-                    // Stories et publications de l'artisan
-                    DB::table('stories')->where('artisan_id', $artisan->id)->delete();
-                    DB::table('posts')->where('artisan_id', $artisan->id)->delete();
+                    
+                    // Tables qui pourraient ne pas exister dans certaines bases
+                    if (Schema::hasTable('stories')) {
+                        DB::table('stories')->where('artisan_id', $artisan->id)->delete();
+                    }
+                    if (Schema::hasTable('posts')) {
+                        DB::table('posts')->where('artisan_id', $artisan->id)->delete();
+                    }
+                    
                     $artisan->delete();
                 }
 
                 // 3. Fiche chauffeur
                 if ($utilisateur->chauffeur) {
-                    $utilisateur->chauffeur->delete();
+                    $utilisateur->chauffeur()->delete();
                 }
 
                 // 4. Données du client
@@ -262,43 +270,63 @@ class ComptesController extends Controller
                 $utilisateur->avisDeposes()->delete();
                 $utilisateur->favoris()->delete();
                 $utilisateur->transactions()->delete();
-                $utilisateur->courses()->delete();
-                $utilisateur->otpCodes()->delete();
-
-                // 5. Follows (pivot)
-                DB::table('follows')
-                    ->where('follower_id', $utilisateur->id)
-                    ->orWhere('artisan_id', $utilisateur->id)
-                    ->delete();
-
-                // 6. Messages (expéditeur)
-                DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
-
-                // 7. Conversations (pivot participant)
-                DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
-
-                // 8. Conversations orphelines (plus aucun participant)
-                DB::table('conversations')
-                    ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
-                    ->delete();
-
-                // 9. Likes et commentaires
-                DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
-                DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
-
-                // 10. Notifications (morph notifiable)
-                DB::table('notifications')
-                    ->where('notifiable_id', $utilisateur->id)
-                    ->where('notifiable_type', User::class)
-                    ->delete();
-
-                // 11. Vérification identité
-                if ($verif = $utilisateur->verificationIdentite) {
-                    $verif->delete();
+                
+                if (method_exists($utilisateur, 'courses')) {
+                    $utilisateur->courses()->delete();
+                }
+                if (method_exists($utilisateur, 'otpCodes')) {
+                    $utilisateur->otpCodes()->delete();
                 }
 
-                // 12. Suppression définitive de l'utilisateur
-                $utilisateur->delete();
+                // 5. Follows (pivot)
+                if (Schema::hasTable('follows')) {
+                    DB::table('follows')
+                        ->where('follower_id', $utilisateur->id)
+                        ->orWhere('artisan_id', $utilisateur->id)
+                        ->delete();
+                }
+
+                // 6. Messages (expéditeur)
+                if (Schema::hasTable('messages')) {
+                    DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
+                }
+
+                // 7. Conversations (pivot participant)
+                if (Schema::hasTable('conversation_participants')) {
+                    DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
+                    
+                    if (Schema::hasTable('conversations')) {
+                        DB::table('conversations')
+                            ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
+                            ->delete();
+                    }
+                }
+
+                // 8. Likes et commentaires
+                if (Schema::hasTable('likes')) {
+                    DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
+                }
+                if (Schema::hasTable('commentaires')) {
+                    DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
+                }
+
+                // 9. Notifications
+                if (Schema::hasTable('notifications')) {
+                    DB::table('notifications')
+                        ->where('notifiable_id', $utilisateur->id)
+                        ->where('notifiable_type', User::class)
+                        ->delete();
+                }
+
+                // 10. Vérification identité
+                if (method_exists($utilisateur, 'verificationIdentite')) {
+                    if ($verif = $utilisateur->verificationIdentite) {
+                        $verif->delete();
+                    }
+                }
+
+                // 11. SUPPRESSION DÉFINITIVE (forceDelete libère le téléphone et l'email)
+                $utilisateur->forceDelete();
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : " . $e->getMessage());
