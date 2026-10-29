@@ -5,8 +5,11 @@ namespace Tests\Feature\Admin;
 use App\Models\Artisan;
 use App\Models\AuditLog;
 use App\Models\Chauffeur;
+use App\Models\DemandeDevis;
+use App\Models\Story;
 use App\Models\User;
 use Database\Seeders\BadgeSeeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -195,5 +198,54 @@ class GestionComptesTest extends TestCase
         $this->assertSame(User::STATUT_ACTIF, $traces->last()->avant['statut']);
         $this->assertSame(User::STATUT_SUSPENDU, $traces->last()->apres['statut']);
         $this->assertNotNull($traces->last()->adresse_ip);
+    }
+
+    public function test_la_suppression_efface_l_artisan_et_ce_qu_il_a_publie(): void
+    {
+        $artisan = Artisan::factory()->create();
+        $compte = $artisan->utilisateur;
+        $client = User::factory()->create(['role' => User::ROLE_CLIENT]);
+
+        $postId = DB::table('posts')->insertGetId([
+            'artisan_id' => $compte->id,
+            'artisan_category' => 'menuiserie',
+            'image_url' => 'publications/table.jpg',
+            'description' => 'Table en bois massif',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('commentaires')->insert([
+            'post_id' => $postId, 'user_id' => $compte->id, 'contenu' => 'Merci !',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Story::create([
+            'artisan_id' => $compte->id,
+            'media_url' => 'stories/atelier.jpg',
+            'expire_at' => now()->addDay(),
+        ]);
+        DemandeDevis::factory()->create(['client_id' => $client->id, 'artisan_id' => $artisan->id]);
+
+        $this->deleteJson("/api/v1/admin/utilisateurs/{$compte->id}")->assertOk();
+
+        $this->assertDatabaseMissing('users', ['id' => $compte->id]);
+        $this->assertDatabaseMissing('artisans', ['id' => $artisan->id]);
+        $this->assertDatabaseCount('posts', 0);
+        $this->assertDatabaseCount('stories', 0);
+        $this->assertDatabaseHas('users', ['id' => $client->id]);
+    }
+
+    public function test_supprimer_un_compte_deja_supprime_ne_plante_pas(): void
+    {
+        $this->deleteJson('/api/v1/admin/utilisateurs/999999')
+            ->assertOk()
+            ->assertJsonPath('message', 'Cet utilisateur a déjà été supprimé.');
+    }
+
+    public function test_un_compte_d_administration_ne_se_supprime_pas_ici(): void
+    {
+        $autreAdmin = User::factory()->admin()->create();
+
+        $this->deleteJson("/api/v1/admin/utilisateurs/{$autreAdmin->id}")->assertForbidden();
+        $this->assertDatabaseHas('users', ['id' => $autreAdmin->id]);
     }
 }

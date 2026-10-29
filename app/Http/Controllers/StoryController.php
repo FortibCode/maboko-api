@@ -2,100 +2,140 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\StoryResource;
 use App\Models\Story;
-use App\Models\StoryView;
+use App\Models\StoryVue;
 use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use RuntimeException;
 
+/**
+ * Stories mettant en avant les travaux récents (§4.1, §5.1.4).
+ * Elles restent visibles 24 heures.
+ */
 class StoryController extends Controller
 {
+    private const DUREE_HEURES = 24;
+
     public function __construct(private MediaService $media) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $stories = Story::with('utilisateur:id,nom,prenom,avatar_url')
-            ->actives()
-            ->latest()
-            ->get()
-            ->groupBy('utilisateur_id');
+        $suivis = $request->user()->abonnementsArtisans()->pluck('users.id');
 
-        return response()->json(['data' => $stories]);
+        $stories = Story::visibles()
+            ->with('artisan:id,nom,prenom,avatar_url')
+            ->when(
+                $suivis->isNotEmpty(),
+                fn ($r) => $r->whereIn('artisan_id', $suivis->push($request->user()->id)),
+            )
+            ->latest()
+            ->limit(50)
+            ->get();
+
+        return StoryResource::collection($stories);
     }
 
     public function store(Request $request): JsonResponse
     {
         $donnees = $request->validate([
             'media_url' => 'required|string',
-            'type' => 'sometimes|string|in:image,video',
+            'legende' => 'sometimes|nullable|string|max:255',
         ]);
 
         try {
-            // On enregistre l'image (base64) sur le serveur et on récupère l'URL
             $url = $this->media->enregistrerImage($donnees['media_url'], 'stories');
         } catch (RuntimeException $e) {
             return response()->json([
-                'message' => 'Erreur lors de l\'enregistrement de l\'image : ' . $e->getMessage()
+                'message' => $e->getMessage(),
+                'errors' => ['media_url' => [$e->getMessage()]],
             ], 422);
         }
 
         $story = Story::create([
-            'utilisateur_id' => $request->user()->id,
+            'artisan_id' => $request->user()->id,
             'media_url' => $url,
-            'type' => $donnees['type'] ?? 'image',
-            'expires_at' => now()->addHours(2),
+            'legende' => $donnees['legende'] ?? null,
+            'expire_at' => now()->addHours(self::DUREE_HEURES),
         ]);
 
-        return response()->json(['message' => 'Story publiée.', 'story' => $story], 201);
+        return response()->json([
+            'message' => 'Story publiée pour 24 heures.',
+            'story' => new StoryResource($story->load('artisan:id,nom,prenom,avatar_url')),
+        ], 201);
     }
 
+    /**
+     * Stories encore visibles de l'artisan connecté, avec leur nombre de vues
+     * (écran « Mes stories »).
+     */
     public function mesStories(Request $request): JsonResponse
     {
-        $stories = Story::where('utilisateur_id', $request->user()->id)
-            ->actives()
-            ->withCount('vues')
+        $stories = Story::visibles()
+            ->where('artisan_id', $request->user()->id)
             ->latest()
-            ->get();
+            ->get()
+            ->map(fn (Story $story) => [
+                'id' => $story->id,
+                'media_url' => $story->media_url,
+                'legende' => $story->legende,
+                'vues_count' => $story->vues_count,
+                'expire_at' => $story->expire_at->toIso8601String(),
+            ]);
 
         return response()->json(['data' => $stories]);
     }
 
+    /** Personnes ayant vu la story, réservé à son auteur. */
     public function voirVues(Request $request, Story $story): JsonResponse
     {
-        if ($story->utilisateur_id !== $request->user()->id) {
-            return response()->json(['message' => 'Non autorisé.'], 403);
+        if ($story->artisan_id !== $request->user()->id) {
+            return response()->json(['message' => 'Seul l\'auteur de la story voit qui l\'a regardée.'], 403);
         }
 
         $vues = $story->vues()
             ->with('utilisateur:id,nom,prenom,avatar_url')
             ->latest()
             ->get()
-            ->map(fn($vue) => [
+            ->map(fn (StoryVue $vue) => [
                 'id' => $vue->utilisateur->id,
                 'nom' => $vue->utilisateur->nom,
                 'prenom' => $vue->utilisateur->prenom,
                 'avatarUrl' => $vue->utilisateur->avatar_url,
-                'vu_le' => $vue->created_at->toIso8601String(),
+                'vueLe' => $vue->created_at?->toIso8601String(),
             ]);
 
         return response()->json(['data' => $vues]);
     }
 
+    /**
+     * Enregistre que l'utilisateur connecté a vu la story. Une même personne
+     * ne compte qu'une fois, et l'auteur ne se compte pas lui-même.
+     */
     public function marquerVue(Request $request, Story $story): JsonResponse
     {
-        StoryView::firstOrCreate([
-            'story_id' => $story->id,
-            'user_id' => $request->user()->id,
-        ]);
+        $utilisateur = $request->user();
 
-        return response()->json(['message' => 'Vue enregistrée.']);
+        if ($story->artisan_id !== $utilisateur->id) {
+            $vue = StoryVue::firstOrCreate([
+                'story_id' => $story->id,
+                'user_id' => $utilisateur->id,
+            ]);
+
+            if ($vue->wasRecentlyCreated) {
+                $story->increment('vues_count');
+            }
+        }
+
+        return response()->json(['vuesCount' => $story->fresh()->vues_count]);
     }
 
     public function destroy(Request $request, Story $story): JsonResponse
     {
-        if ($story->utilisateur_id !== $request->user()->id) {
-            return response()->json(['message' => 'Non autorisé.'], 403);
+        if ($story->artisan_id !== $request->user()->id) {
+            return response()->json(['message' => 'Seul l\'auteur peut supprimer cette story.'], 403);
         }
 
         $story->delete();

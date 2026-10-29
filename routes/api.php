@@ -149,7 +149,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
 
-        Route::apiResource('missions', MissionController::class);
+        Route::apiResource('missions', MissionController::class)->only(['index', 'show', 'store']);
 
         /*
         |------------------------------------------------------------------

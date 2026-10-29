@@ -213,8 +213,9 @@ class ComptesController extends Controller
      */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        // withTrashed() trouve l'utilisateur même s'il a été "soft deleted"
-        $utilisateur = User::withTrashed()->find($utilisateurId);
+        // User n'utilise pas SoftDeletes : un compte supprimé n'est plus en
+        // base, et find() suffit à le constater.
+        $utilisateur = User::find($utilisateurId);
 
         if (! $utilisateur) {
             return response()->json([
@@ -250,11 +251,13 @@ class ComptesController extends Controller
                     $artisan->abonnements()->delete();
                     
                     // Tables qui pourraient ne pas exister dans certaines bases
+                    // stories.artisan_id et posts.artisan_id désignent le compte
+                    // (users.id), pas la fiche artisan.
                     if (Schema::hasTable('stories')) {
-                        DB::table('stories')->where('artisan_id', $artisan->id)->delete();
+                        DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
                     }
                     if (Schema::hasTable('posts')) {
-                        DB::table('posts')->where('artisan_id', $artisan->id)->delete();
+                        DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
                     }
                     
                     $artisan->delete();
@@ -304,10 +307,10 @@ class ComptesController extends Controller
 
                 // 8. Likes et commentaires
                 if (Schema::hasTable('likes')) {
-                    DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
+                    DB::table('likes')->where('user_id', $utilisateur->id)->delete();
                 }
                 if (Schema::hasTable('commentaires')) {
-                    DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
+                    DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
                 }
 
                 // 9. Notifications
