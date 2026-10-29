@@ -1,190 +1,178 @@
 <?php
 
-namespace App\Models;
+namespace App\Http\Controllers;
 
-use App\Services\MediaService;
-use Illuminate\Database\Eloquent\Casts\Attribute;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Carbon;
-use Laravel\Sanctum\HasApiTokens;
+use App\Models\Artisan;
+use App\Models\User;
+use App\Services\OtpService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
-/**
- * @property int $id
- * @property string $nom
- * @property string|null $prenom
- * @property string|null $avatar_url
- * @property string $role
- * @property string $statut
- * @property Carbon|null $derniere_connexion_at
- */
-class User extends Authenticatable
+class OtpController extends Controller
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    public function __construct(private OtpService $otp) {}
 
-    public const ROLE_CLIENT = 'client';
-
-    public const ROLE_ARTISAN = 'artisan';
-
-    public const ROLE_CHAUFFEUR = 'chauffeur';
-
-    public const ROLE_ADMIN = 'admin';
-
-    public const ROLE_SUPER_ADMIN = 'super_admin';
-
-    public const ROLES = [
-        self::ROLE_CLIENT,
-        self::ROLE_ARTISAN,
-        self::ROLE_CHAUFFEUR,
-        self::ROLE_ADMIN,
-        self::ROLE_SUPER_ADMIN,
-    ];
-
-    public const STATUT_ACTIF = 'actif';
-
-    public const STATUT_SUSPENDU = 'suspendu';
-
-    protected $table = 'users';
-
-    protected $fillable = [
-        'nom',
-        'prenom',
-        'telephone',
-        'email',
-        'role',
-        'password',
-        'is_verified',
-        'statut',
-        'avatar_url',
-        'ville',
-        'quartier',
-        'derniere_connexion_at',
-    ];
-
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
-
-    protected function casts(): array
+    /**
+     * Inscription, étape 1 : le formulaire est mis en attente et un code
+     * est envoyé par SMS.
+     */
+    public function sendRegisterOtp(Request $request): JsonResponse
     {
-        return [
-            'is_verified' => 'boolean',
-            'password' => 'hashed',
-            'derniere_connexion_at' => 'datetime',
-        ];
-    }
+        // 🧹 NETTOYAGE : si un compte orphelin existe avec ce téléphone ou
+        // cet email (par exemple une ancienne suppression partielle),
+        // on le supprime définitivement pour libérer la place.
+        $telephone = $request->input('telephone');
+        $email = $request->input('email');
 
-    // ------------------------------------------------------------------
-    // Roles
-    // ------------------------------------------------------------------
+        if ($telephone || $email) {
+            $anciens = User::query()
+                ->where(function ($q) use ($telephone, $email) {
+                    if ($telephone) $q->orWhere('telephone', $telephone);
+                    if ($email) $q->orWhere('email', $email);
+                })
+                ->get();
 
-    public function estArtisan(): bool
-    {
-        return $this->role === self::ROLE_ARTISAN;
-    }
+            foreach ($anciens as $user) {
+                // On ne supprime pas un admin
+                if ($user->estAdmin()) {
+                    continue;
+                }
+                if ($user->artisan) {
+                    $user->artisan->metiers()->detach();
+                    $user->artisan->badges()->detach();
+                    $user->artisan->delete();
+                }
+                if ($user->chauffeur) {
+                    $user->chauffeur->delete();
+                }
+                $user->tokens()->delete();
+                $user->delete();
+            }
+        }
 
-    public function estChauffeur(): bool
-    {
-        return $this->role === self::ROLE_CHAUFFEUR;
-    }
+        $donnees = $request->validate([
+            'nom' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email',
+            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/', 'unique:users,telephone'],
+            'password' => 'required|string|min:8',
+            'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
+        ]);
 
-    public function estAdmin(): bool
-    {
-        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN], true);
-    }
+        $code = $this->otp->emettrePourInscription($donnees);
 
-    // ------------------------------------------------------------------
-    // Relations
-    // ------------------------------------------------------------------
-
-    public function artisan(): HasOne
-    {
-        return $this->hasOne(Artisan::class, 'utilisateur_id');
-    }
-
-    public function chauffeur(): HasOne
-    {
-        return $this->hasOne(Chauffeur::class, 'utilisateur_id');
-    }
-
-    public function admin(): HasOne
-    {
-        return $this->hasOne(Admin::class, 'utilisateur_id');
-    }
-
-    public function superAdmin(): HasOne
-    {
-        return $this->hasOne(SuperAdmin::class, 'utilisateur_id');
-    }
-
-    public function otpCodes(): HasMany
-    {
-        return $this->hasMany(OtpCode::class, 'user_id');
-    }
-
-    /** Courses reservees par cet utilisateur en tant que client. */
-    public function courses(): HasMany
-    {
-        return $this->hasMany(Course::class, 'utilisateur_id');
-    }
-
-    /** Demandes de devis envoyees en tant que client. */
-    public function demandes(): HasMany
-    {
-        return $this->hasMany(DemandeDevis::class, 'client_id');
-    }
-
-    public function publications(): HasMany
-    {
-        return $this->hasMany(Post::class, 'artisan_id');
-    }
-
-    public function avisDeposes(): HasMany
-    {
-        return $this->hasMany(Avis::class, 'auteur_id');
-    }
-
-    /** Artisans suivis par cet utilisateur (fil d'actualite). */
-    public function abonnementsArtisans(): BelongsToMany
-    {
-        return $this->belongsToMany(self::class, 'follows', 'follower_id', 'artisan_id')
-            ->withTimestamps();
-    }
-
-    public function favoris(): HasMany
-    {
-        return $this->hasMany(Favori::class);
-    }
-
-    public function conversations(): BelongsToMany
-    {
-        return $this->belongsToMany(Conversation::class, 'conversation_participants')
-            ->withPivot('dernier_message_lu_id', 'muet')
-            ->withTimestamps();
-    }
-
-    public function transactions(): HasMany
-    {
-        return $this->hasMany(Transaction::class);
-    }
-
-    public function verificationIdentite(): HasOne
-    {
-        return $this->hasOne(VerificationIdentite::class)->latestOfMany();
+        return response()->json($this->reponseAvecCode(
+            'Code de validation envoyé par SMS.',
+            $code,
+            $donnees['telephone'],
+        ));
     }
 
     /**
-     * Rend l'URL absolue pour le client qui interroge l'API.
-     *
-     * La colonne ne contient qu'un chemin : l'hote se decide a la lecture.
+     * Inscription, étape 2 : le code est vérifié et le compte est créé.
      */
-    protected function avatarUrl(): Attribute
+    public function verifyAndRegister(Request $request): JsonResponse
     {
-        return Attribute::get(fn (?string $valeur) => MediaService::absolue($valeur));
+        $request->validate([
+            'telephone' => 'required|string',
+            'code' => 'required|string|size:6',
+        ]);
+
+        $otp = $this->otp->verifier($request->telephone, $request->code);
+
+        if (! $otp || ! $otp->email) {
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
+        }
+
+        $user = User::create([
+            'nom' => $otp->nom,
+            'email' => $otp->email,
+            'telephone' => $otp->telephone,
+            'password' => $otp->password,
+            'role' => $otp->role ?: User::ROLE_CLIENT,
+            'is_verified' => true,
+        ]);
+
+        if ($user->role === User::ROLE_ARTISAN) {
+            $ville = $user->ville ?? 'Brazzaville';
+
+            Artisan::create([
+                'utilisateur_id' => $user->id,
+                'specialite' => 'À compléter',
+                'adresse' => $ville.', Congo',
+                'latitude' => -4.2634,
+                'longitude' => 15.2429,
+                'bio' => 'Artisan à '.$ville,
+                'zone_intervention' => $ville,
+                'rayon_km' => 10,
+                'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
+            ]);
+        }
+
+        $otp->update(['user_id' => $user->id, 'statut' => true]);
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Compte créé avec succès.',
+            'token' => $token,
+            'user' => $user,
+        ], 201);
+    }
+
+    public function sendOtp(Request $request): JsonResponse
+    {
+        $request->validate([
+            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
+        ]);
+
+        $user = User::where('telephone', $request->telephone)->first();
+        $code = null;
+
+        if ($user) {
+            $code = $this->otp->emettrePourReinitialisation($user->id, $request->telephone);
+        }
+
+        return response()->json($this->reponseAvecCode(
+            'Si un compte existe avec ce numéro, un code vient de lui être envoyé.',
+            $code,
+            $request->telephone,
+            OtpService::CONTEXTE_REINITIALISATION,
+        ));
+    }
+
+    public function verifyOtp(Request $request): JsonResponse
+    {
+        $request->validate([
+            'telephone' => 'required|string',
+            'code' => 'required|string|size:6',
+        ]);
+
+        $otp = $this->otp->verifier($request->telephone, $request->code);
+
+        if (! $otp) {
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
+        }
+
+        return response()->json([
+            'message' => 'Code vérifié.',
+            'reset_token' => $this->otp->emettreJetonReinitialisation($otp),
+            'expire_dans' => OtpService::VALIDITE_JETON_MINUTES * 60,
+        ]);
+    }
+
+    private function reponseAvecCode(
+        string $message,
+        ?string $code,
+        ?string $telephone = null,
+        string $contexte = OtpService::CONTEXTE_INSCRIPTION,
+    ): array {
+        $reponse = ['message' => $message];
+
+        if ($code !== null && $this->otp->codeExposable($telephone, $contexte)) {
+            $reponse['debug_code'] = $code;
+        }
+
+        return $reponse;
     }
 }
