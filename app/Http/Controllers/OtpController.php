@@ -19,32 +19,9 @@ class OtpController extends Controller
      */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // 🧹 NETTOYAGE : si un compte soft-deleted existe avec ce téléphone
-        // ou cet email, on le supprime définitivement pour libérer la place.
-        $telephone = $request->input('telephone');
-        $email = $request->input('email');
-
-        if ($telephone || $email) {
-            $supprimes = User::onlyTrashed()
-                ->where(function ($q) use ($telephone, $email) {
-                    if ($telephone) $q->orWhere('telephone', $telephone);
-                    if ($email) $q->orWhere('email', $email);
-                })
-                ->get();
-
-            foreach ($supprimes as $user) {
-                if ($user->artisan) {
-                    $user->artisan->metiers()->detach();
-                    $user->artisan->badges()->detach();
-                    $user->artisan->delete();
-                }
-                if ($user->chauffeur) {
-                    $user->chauffeur->delete();
-                }
-                $user->forceDelete();
-            }
-        }
-
+        // Pas de nettoyage de comptes supprimés ici : User n'utilise pas
+        // SoftDeletes, un compte supprimé disparaît de la table et libère
+        // aussitôt son téléphone et son e-mail.
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
