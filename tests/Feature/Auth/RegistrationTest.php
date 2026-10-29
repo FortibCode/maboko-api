@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class RegistrationTest extends TestCase
@@ -124,5 +125,34 @@ class RegistrationTest extends TestCase
             User::ROLE_CLIENT,
             User::where('telephone', $formulaire['telephone'])->first()->role
         );
+    }
+
+    public function test_un_compte_supprime_par_l_admin_libere_son_numero_et_son_email(): void
+    {
+        $ancien = User::factory()->create([
+            'role' => User::ROLE_ARTISAN,
+            'telephone' => '+242061111111',
+            'email' => 'ancien@example.cg',
+        ]);
+
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+        $this->deleteJson("/api/v1/admin/utilisateurs/{$ancien->id}")->assertOk();
+        $this->app['auth']->forgetGuards();
+
+        $formulaire = $this->formulaire(['email' => 'ancien@example.cg']);
+
+        $this->postJson('/api/v1/send-register-otp', $formulaire)->assertOk();
+
+        $code = OtpCode::where('telephone', $formulaire['telephone'])->latest()->first()->code;
+
+        $this->postJson('/api/v1/verify-register-otp', [
+            'telephone' => $formulaire['telephone'],
+            'code' => $code,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('users', [
+            'telephone' => '+242061111111',
+            'email' => 'ancien@example.cg',
+        ]);
     }
 }
