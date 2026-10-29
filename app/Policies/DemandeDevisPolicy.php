@@ -54,11 +54,21 @@ class DemandeDevisPolicy
         return $this->estClient($user, $demande) && ! $demande->estCloturee();
     }
 
-    /** On ne note qu'une intervention reellement terminee, et une seule fois. */
-    public function noter(User $user, DemandeDevis $demande): bool
+    /** Le client regle une intervention terminee, une seule fois. */
+    public function payer(User $user, DemandeDevis $demande): bool
     {
         return $this->estClient($user, $demande)
             && $demande->statut === DemandeDevis::STATUT_TERMINEE;
+    }
+
+    /**
+     * On ne note qu'une intervention reellement terminee, et une seule fois.
+     * La payer ne retire pas le droit de la noter.
+     */
+    public function noter(User $user, DemandeDevis $demande): bool
+    {
+        return $this->estClient($user, $demande)
+            && in_array($demande->statut, [DemandeDevis::STATUT_TERMINEE, DemandeDevis::STATUT_PAYEE], true);
     }
 
     private function estClient(User $user, DemandeDevis $demande): bool

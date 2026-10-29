@@ -216,6 +216,61 @@ class DemandeDevisTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Paiement (simulé)
+    // ------------------------------------------------------------------
+
+    public function test_le_client_paie_une_intervention_terminee(): void
+    {
+        $demande = DemandeDevis::factory()->statut(DemandeDevis::STATUT_TERMINEE)->create([
+            'client_id' => $this->client->id,
+            'artisan_id' => $this->artisan->id,
+            'montant_final' => 30000,
+        ]);
+
+        Sanctum::actingAs($this->client);
+
+        $this->postJson("/api/v1/demandes/{$demande->id}/payer")
+            ->assertOk()
+            ->assertJsonPath('demande.statut', DemandeDevis::STATUT_PAYEE);
+
+        $this->assertDatabaseHas('transactions', [
+            'user_id' => $this->artisan->utilisateur_id,
+            'payable_type' => DemandeDevis::class,
+            'payable_id' => $demande->id,
+            'montant' => 30000,
+            'statut' => 'reussie',
+        ]);
+    }
+
+    public function test_une_intervention_ne_se_paie_qu_une_fois_terminee(): void
+    {
+        $demande = DemandeDevis::factory()->statut(DemandeDevis::STATUT_EN_COURS)->create([
+            'client_id' => $this->client->id,
+            'artisan_id' => $this->artisan->id,
+        ]);
+
+        Sanctum::actingAs($this->client);
+        $this->postJson("/api/v1/demandes/{$demande->id}/payer")->assertForbidden();
+
+        $demande->update(['statut' => DemandeDevis::STATUT_PAYEE]);
+        $this->postJson("/api/v1/demandes/{$demande->id}/payer")->assertForbidden();
+
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_seul_le_client_paie_sa_demande(): void
+    {
+        $demande = DemandeDevis::factory()->statut(DemandeDevis::STATUT_TERMINEE)->create([
+            'client_id' => $this->client->id,
+            'artisan_id' => $this->artisan->id,
+        ]);
+
+        Sanctum::actingAs($this->artisan->utilisateur);
+
+        $this->postJson("/api/v1/demandes/{$demande->id}/payer")->assertForbidden();
+    }
+
+    // ------------------------------------------------------------------
     // Validation
     // ------------------------------------------------------------------
 

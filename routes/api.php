@@ -135,8 +135,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/courses/{course}', [CourseController::class, 'show']);
         Route::post('/courses/{course}/annuler', [CourseController::class, 'annuler']);
 
-        Route::post('/chauffeur', [ChauffeurController::class, 'store']);
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
+        // Depot de la fiche vehicule par le chauffeur lui-meme.
         Route::post('/chauffeur', [ChauffeurController::class, 'enregistrerFiche']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);
