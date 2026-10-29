@@ -9,8 +9,8 @@ use App\Models\DemandeDevis;
 use App\Models\Story;
 use App\Models\User;
 use Database\Seeders\BadgeSeeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 

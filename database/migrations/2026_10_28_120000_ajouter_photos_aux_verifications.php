@@ -14,13 +14,13 @@ return new class extends Migration
         if (Schema::hasTable($tableName)) {
             Schema::table($tableName, function (Blueprint $table) use ($tableName) {
                 // On ajoute les colonnes manquantes si elles n'existent pas
-                if (!Schema::hasColumn($tableName, 'numero_piece')) {
+                if (! Schema::hasColumn($tableName, 'numero_piece')) {
                     $table->string('numero_piece')->nullable();
                 }
-                if (!Schema::hasColumn($tableName, 'photo_recto')) {
+                if (! Schema::hasColumn($tableName, 'photo_recto')) {
                     $table->longText('photo_recto')->nullable();
                 }
-                if (!Schema::hasColumn($tableName, 'photo_verso')) {
+                if (! Schema::hasColumn($tableName, 'photo_verso')) {
                     $table->longText('photo_verso')->nullable();
                 }
             });

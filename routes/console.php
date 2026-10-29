@@ -1,9 +1,9 @@
 <?php
 
+use App\Console\Commands\RafraichirMusee;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schedule;
-use App\Console\Commands\RafraichirMusee; // Si l'import existe
+use Illuminate\Support\Facades\Schedule; // Si l'import existe
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

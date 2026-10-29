@@ -27,9 +27,13 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     public const ROLE_CLIENT = 'client';
+
     public const ROLE_ARTISAN = 'artisan';
+
     public const ROLE_CHAUFFEUR = 'chauffeur';
+
     public const ROLE_ADMIN = 'admin';
+
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
     public const ROLES = [
@@ -41,6 +45,7 @@ class User extends Authenticatable
     ];
 
     public const STATUT_ACTIF = 'actif';
+
     public const STATUT_SUSPENDU = 'suspendu';
 
     protected $table = 'users';

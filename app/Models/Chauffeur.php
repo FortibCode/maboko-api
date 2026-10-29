@@ -34,6 +34,7 @@ class Chauffeur extends Model
     public const VALIDATION_REJETE = 'rejete';
 
     public const VEHICULE_MOTO = 'moto';
+
     public const VEHICULE_VOITURE = 'voiture';
 
     protected $table = 'chauffeurs';

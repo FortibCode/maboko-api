@@ -22,8 +22,8 @@ use App\Http\Controllers\FavoriController;
 use App\Http\Controllers\InteractionController;
 use App\Http\Controllers\MetierController;
 use App\Http\Controllers\MissionController;
-use App\Http\Controllers\MuseeController;
 use App\Http\Controllers\MoyenPaiementController;
+use App\Http\Controllers\MuseeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\PaiementWebhookController;
@@ -167,10 +167,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/chauffeurs', [ComptesController::class, 'chauffeurs']);
             Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])->whereIn('type', ['artisans', 'chauffeurs']);
             Route::post('/utilisateurs/{utilisateur}/suspension', [ComptesController::class, 'basculerSuspension']);
-            
+
             // 👇 MODIFICATION ICI : on utilise {utilisateurId} pour éviter le Route Model Binding
             Route::delete('/utilisateurs/{utilisateurId}', [ComptesController::class, 'supprimerUtilisateur']);
-            
+
             Route::post('/artisans/{artisan}/badge', [ComptesController::class, 'attribuerBadge']);
 
             // Modération
