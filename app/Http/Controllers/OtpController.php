@@ -14,11 +14,37 @@ class OtpController extends Controller
     public function __construct(private OtpService $otp) {}
 
     /**
-     * Inscription, etape 1 : le formulaire est mis en attente et un code
-     * est envoye par SMS. Aucun compte n'est cree a ce stade.
+     * Inscription, étape 1 : le formulaire est mis en attente et un code
+     * est envoyé par SMS. Aucun compte n'est créé à ce stade.
      */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
+        // 🧹 NETTOYAGE : si un compte soft-deleted existe avec ce téléphone
+        // ou cet email, on le supprime définitivement pour libérer la place.
+        $telephone = $request->input('telephone');
+        $email = $request->input('email');
+
+        if ($telephone || $email) {
+            $supprimes = User::onlyTrashed()
+                ->where(function ($q) use ($telephone, $email) {
+                    if ($telephone) $q->orWhere('telephone', $telephone);
+                    if ($email) $q->orWhere('email', $email);
+                })
+                ->get();
+
+            foreach ($supprimes as $user) {
+                if ($user->artisan) {
+                    $user->artisan->metiers()->detach();
+                    $user->artisan->badges()->detach();
+                    $user->artisan->delete();
+                }
+                if ($user->chauffeur) {
+                    $user->chauffeur->delete();
+                }
+                $user->forceDelete();
+            }
+        }
+
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
@@ -30,17 +56,15 @@ class OtpController extends Controller
         $code = $this->otp->emettrePourInscription($donnees);
 
         return response()->json($this->reponseAvecCode(
-            'Code de validation envoye par SMS.',
+            'Code de validation envoyé par SMS.',
             $code,
             $donnees['telephone'],
         ));
     }
 
     /**
-     * Inscription, etape 2 : le code est verifie et le compte est cree
-     * a partir des donnees mises en attente a l'etape 1. Les valeurs
-     * renvoyees par le client ne sont pas reprises, pour qu'il ne puisse
-     * pas modifier son role ou son e-mail entre les deux appels.
+     * Inscription, étape 2 : le code est vérifié et le compte est créé
+     * à partir des données mises en attente à l'étape 1.
      */
     public function verifyAndRegister(Request $request): JsonResponse
     {
@@ -52,7 +76,7 @@ class OtpController extends Controller
         $otp = $this->otp->verifier($request->telephone, $request->code);
 
         if (! $otp || ! $otp->email) {
-            return response()->json(['message' => 'Code invalide ou expire.'], 422);
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
         }
 
         $user = User::create([
@@ -64,9 +88,7 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
-        // Aucun compte artisan sans fiche : une fiche provisoire est creee
-        // tout de suite, en attente. ArtisanController::store la complete
-        // et la valide.
+        // Aucun compte artisan sans fiche : une fiche provisoire est créée
         if ($user->role === User::ROLE_ARTISAN) {
             $ville = $user->ville ?? 'Brazzaville';
 
@@ -88,16 +110,14 @@ class OtpController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Compte cree avec succes.',
+            'message' => 'Compte créé avec succès.',
             'token' => $token,
             'user' => $user,
         ], 201);
     }
 
     /**
-     * Mot de passe oublie, etape 1 : envoi du code.
-     * La reponse est identique que le numero existe ou non, afin de ne pas
-     * transformer cet endpoint en annuaire des comptes inscrits.
+     * Mot de passe oublié, étape 1 : envoi du code.
      */
     public function sendOtp(Request $request): JsonResponse
     {
@@ -113,7 +133,7 @@ class OtpController extends Controller
         }
 
         return response()->json($this->reponseAvecCode(
-            'Si un compte existe avec ce numero, un code vient de lui etre envoye.',
+            'Si un compte existe avec ce numéro, un code vient de lui être envoyé.',
             $code,
             $request->telephone,
             OtpService::CONTEXTE_REINITIALISATION,
@@ -121,8 +141,8 @@ class OtpController extends Controller
     }
 
     /**
-     * Mot de passe oublie, etape 2 : la verification du code remet un jeton
-     * a usage unique, seul sesame accepte ensuite par /reset-password.
+     * Mot de passe oublié, étape 2 : la vérification du code remet un jeton
+     * à usage unique, seul sésame accepté ensuite par /reset-password.
      */
     public function verifyOtp(Request $request): JsonResponse
     {
@@ -134,19 +154,19 @@ class OtpController extends Controller
         $otp = $this->otp->verifier($request->telephone, $request->code);
 
         if (! $otp) {
-            return response()->json(['message' => 'Code invalide ou expire.'], 422);
+            return response()->json(['message' => 'Code invalide ou expiré.'], 422);
         }
 
         return response()->json([
-            'message' => 'Code verifie.',
+            'message' => 'Code vérifié.',
             'reset_token' => $this->otp->emettreJetonReinitialisation($otp),
             'expire_dans' => OtpService::VALIDITE_JETON_MINUTES * 60,
         ]);
     }
 
     /**
-     * En developpement sans passerelle SMS, le code peut etre renvoye dans la
-     * reponse. Le drapeau vaut false par defaut et doit le rester en production.
+     * En développement sans passerelle SMS, le code peut être renvoyé dans la
+     * réponse. Le drapeau vaut false par défaut et doit le rester en production.
      */
     private function reponseAvecCode(
         string $message,

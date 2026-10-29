@@ -208,8 +208,7 @@ class ComptesController extends Controller
 
     /**
      * Suppression définitive d'un compte.
-     * Utilise find() au lieu du Route Model Binding pour gérer le cas où
-     * l'utilisateur a déjà été supprimé.
+     * Le modèle User n'utilise PAS SoftDeletes, donc delete() supprime vraiment.
      */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
@@ -218,7 +217,7 @@ class ComptesController extends Controller
         if (! $utilisateur) {
             return response()->json([
                 'message' => 'Cet utilisateur a déjà été supprimé.',
-            ], 200); // 200 pour que le frontend considère l'action comme réussie
+            ], 200);
         }
 
         if ($utilisateur->estAdmin()) {
@@ -237,40 +236,68 @@ class ComptesController extends Controller
 
         try {
             DB::transaction(function () use ($utilisateur) {
-                // 1. Révoquer tous les tokens
+                // 1. Tokens
                 $utilisateur->tokens()->delete();
 
-                // 2. Supprimer la fiche artisan et ses dépendances via Eloquent
+                // 2. Fiche artisan + dépendances
                 if ($artisan = $utilisateur->artisan) {
                     $artisan->metiers()->detach();
                     $artisan->badges()->detach();
-                    
-                    // Ces méthodes utilisent les relations définies dans les modèles
-                    $artisan->demandes()->delete();      // Table demande_devis
-                    $artisan->avis()->delete();          // Table avis
-                    $artisan->abonnements()->delete();   // Table abonnements
-                    
+                    $artisan->demandes()->delete();
+                    $artisan->avis()->delete();
+                    $artisan->abonnements()->delete();
+                    // Stories et publications de l'artisan
+                    DB::table('stories')->where('artisan_id', $artisan->id)->delete();
+                    DB::table('posts')->where('artisan_id', $artisan->id)->delete();
                     $artisan->delete();
                 }
 
-                // 3. Supprimer la fiche chauffeur
+                // 3. Fiche chauffeur
                 if ($utilisateur->chauffeur) {
                     $utilisateur->chauffeur->delete();
                 }
 
-                // 4. Supprimer les données du client via Eloquent
-                $utilisateur->demandes()->delete();      // Table demande_devis
-                $utilisateur->avisDeposes()->delete();   // Table avis
-                $utilisateur->favoris()->delete();       // Table favoris
-                $utilisateur->transactions()->delete();  // Table transactions
-                
-                // 5. Cas particuliers (tables pivot sans modèle direct)
+                // 4. Données du client
+                $utilisateur->demandes()->delete();
+                $utilisateur->avisDeposes()->delete();
+                $utilisateur->favoris()->delete();
+                $utilisateur->transactions()->delete();
+                $utilisateur->courses()->delete();
+                $utilisateur->otpCodes()->delete();
+
+                // 5. Follows (pivot)
                 DB::table('follows')
                     ->where('follower_id', $utilisateur->id)
                     ->orWhere('artisan_id', $utilisateur->id)
                     ->delete();
 
-                // 6. Supprimer l'utilisateur
+                // 6. Messages (expéditeur)
+                DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
+
+                // 7. Conversations (pivot participant)
+                DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
+
+                // 8. Conversations orphelines (plus aucun participant)
+                DB::table('conversations')
+                    ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
+                    ->delete();
+
+                // 9. Likes et commentaires
+                DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
+                DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
+
+                // 10. Notifications (morph notifiable)
+                DB::table('notifications')
+                    ->where('notifiable_id', $utilisateur->id)
+                    ->where('notifiable_type', User::class)
+                    ->delete();
+
+                // 11. Vérification identité
+                if ($verif = $utilisateur->verificationIdentite) {
+                    $verif->delete();
+                }
+
+                // 12. Suppression définitive de l'utilisateur
                 $utilisateur->delete();
             });
         } catch (\Throwable $e) {
