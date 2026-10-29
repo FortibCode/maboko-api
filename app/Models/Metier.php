@@ -13,12 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property int $id
  * @property string $nom
  * @property string $slug
-<<<<<<< HEAD
  * @property string|null $icone
- * @property string|null $image_url
-=======
  * @property-read string|null $image_url URL absolue, construite à la lecture
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
  * @property-read ArtisanMetier $pivot
  */
 class Metier extends Model
@@ -27,7 +23,6 @@ class Metier extends Model
 
     protected $table = 'metiers';
 
-<<<<<<< HEAD
     protected $fillable = [
         'nom',
         'slug',
@@ -37,9 +32,6 @@ class Metier extends Model
         'ordre',
         'actif',
     ];
-=======
-    protected $fillable = ['nom', 'slug', 'icone', 'image_url', 'description', 'ordre', 'actif'];
->>>>>>> 191747fdc8be36e8985fed8248eddadb6cd3fa61
 
     protected function casts(): array
     {

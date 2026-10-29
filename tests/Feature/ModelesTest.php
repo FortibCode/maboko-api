@@ -31,7 +31,10 @@ class ModelesTest extends TestCase
      *
      * @var array<string, array<int, string>>
      */
-    private const EXCEPTIONS = [];
+    private const EXCEPTIONS = [
+        // Compteurs : modifies par increment(), jamais par le formulaire.
+        'App\\Models\\Publicite' => ['nb_affichages', 'nb_clics'],
+    ];
 
     public function test_chaque_colonne_est_assignable_ou_explicitement_exclue(): void
     {

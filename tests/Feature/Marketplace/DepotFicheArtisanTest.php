@@ -13,10 +13,10 @@ use Tests\TestCase;
 /**
  * Creation de la fiche artisan par son titulaire (§5.2.1).
  *
- * L'inscription cree le compte, jamais la fiche. Sans elle l'artisan
- * n'apparait dans aucune recherche et son tableau de bord n'a rien a
- * montrer. La route existait mais n'etait couverte par aucun test, et
- * aucun ecran de l'application ne l'appelait.
+ * L'inscription d'un artisan cree une fiche provisoire en attente
+ * (OtpController). Cette route la complete, ou la cree si elle manque, et
+ * la valide aussitot : l'artisan apparait dans la recherche sans attendre
+ * l'administration, qui peut toujours revenir sur la validation.
  */
 class DepotFicheArtisanTest extends TestCase
 {
@@ -47,7 +47,7 @@ class DepotFicheArtisanTest extends TestCase
 
         $this->postJson('/api/v1/artisans', $this->fiche())
             ->assertCreated()
-            ->assertJsonPath('specialite', 'Menuisier');
+            ->assertJsonPath('data.specialite', 'Menuisier');
 
         $this->assertDatabaseHas('artisans', [
             'utilisateur_id' => $utilisateur->id,
@@ -56,7 +56,7 @@ class DepotFicheArtisanTest extends TestCase
         ]);
     }
 
-    public function test_la_fiche_part_en_attente_de_validation(): void
+    public function test_la_fiche_completee_est_validee_aussitot(): void
     {
         $utilisateur = $this->artisanSansFiche();
         Sanctum::actingAs($utilisateur);
@@ -64,9 +64,30 @@ class DepotFicheArtisanTest extends TestCase
         $this->postJson('/api/v1/artisans', $this->fiche())->assertCreated();
 
         $this->assertSame(
-            Artisan::VALIDATION_EN_ATTENTE,
+            Artisan::VALIDATION_VALIDE,
             Artisan::where('utilisateur_id', $utilisateur->id)->value('statut_validation'),
         );
+    }
+
+    public function test_la_fiche_provisoire_de_l_inscription_est_completee(): void
+    {
+        $utilisateur = $this->artisanSansFiche();
+        Artisan::factory()->create([
+            'utilisateur_id' => $utilisateur->id,
+            'specialite' => 'À compléter',
+            'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
+        ]);
+        Sanctum::actingAs($utilisateur);
+
+        $this->postJson('/api/v1/artisans', $this->fiche())
+            ->assertOk()
+            ->assertJsonPath('data.specialite', 'Menuisier');
+
+        $this->assertDatabaseHas('artisans', [
+            'utilisateur_id' => $utilisateur->id,
+            'specialite' => 'Menuisier',
+            'statut_validation' => Artisan::VALIDATION_VALIDE,
+        ]);
     }
 
     public function test_les_metiers_choisis_sont_rattaches(): void
@@ -105,13 +126,15 @@ class DepotFicheArtisanTest extends TestCase
             ->assertJsonPath('ficheManquante', false);
     }
 
-    public function test_une_seconde_fiche_est_refusee(): void
+    public function test_une_seconde_soumission_met_a_jour_la_meme_fiche(): void
     {
         $utilisateur = $this->artisanSansFiche();
         Sanctum::actingAs($utilisateur);
 
         $this->postJson('/api/v1/artisans', $this->fiche())->assertCreated();
-        $this->postJson('/api/v1/artisans', $this->fiche())->assertStatus(409);
+        $this->postJson('/api/v1/artisans', $this->fiche(['specialite' => 'Ébéniste']))
+            ->assertOk()
+            ->assertJsonPath('data.specialite', 'Ébéniste');
 
         $this->assertSame(1, Artisan::where('utilisateur_id', $utilisateur->id)->count());
     }

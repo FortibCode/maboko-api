@@ -19,6 +19,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // La colonne existe deja si 2026_09_10_160000_ajouter_image_aux_metiers
+        // est passee : les deux branches fusionnees l'ajoutaient chacune.
+        if (Schema::hasColumn('metiers', 'image_url')) {
+            return;
+        }
+
         Schema::table('metiers', function (Blueprint $table) {
             $table->string('image_url', 500)
                 ->nullable()

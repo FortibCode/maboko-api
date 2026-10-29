@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -41,9 +42,13 @@ class DemandeDevis extends Model
 
     public const STATUT_ANNULEE = 'annulee';
 
+    /** Terminee puis reglee par le client (paiement simule pour l'instant). */
+    public const STATUT_PAYEE = 'payee';
+
     public const STATUTS = [
         self::STATUT_EN_ATTENTE, self::STATUT_ACCEPTEE, self::STATUT_REFUSEE,
         self::STATUT_EN_COURS, self::STATUT_TERMINEE, self::STATUT_ANNULEE,
+        self::STATUT_PAYEE,
     ];
 
     protected $table = 'demandes_devis';
@@ -99,8 +104,13 @@ class DemandeDevis extends Model
         return $this->hasOne(Conversation::class, 'demande_devis_id');
     }
 
+    public function transactions(): MorphMany
+    {
+        return $this->morphMany(Transaction::class, 'payable');
+    }
+
     public function estCloturee(): bool
     {
-        return in_array($this->statut, [self::STATUT_TERMINEE, self::STATUT_ANNULEE, self::STATUT_REFUSEE], true);
+        return in_array($this->statut, [self::STATUT_TERMINEE, self::STATUT_PAYEE, self::STATUT_ANNULEE, self::STATUT_REFUSEE], true);
     }
 }

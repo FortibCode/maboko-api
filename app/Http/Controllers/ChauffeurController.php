@@ -14,61 +14,6 @@ use Illuminate\Validation\Rule;
  */
 class ChauffeurController extends Controller
 {
-    /**
-     * Création de la fiche véhicule du chauffeur connecté (§5.3.1).
-     *
-     * Cette route manquait : le mobile l'appelait, mais aucune route
-     * n'était déclarée côté serveur. Le compte restait sans fiche et
-     * tout l'espace chauffeur répondait 404.
-     */
-    public function store(Request $request): JsonResponse
-    {
-        $donnees = $request->validate([
-            'type_vehicule' => 'required|string|in:moto,voiture,utilitaire,camion,bus,taxi',
-            'vehicule_modele' => 'required|string|max:100',
-            'plaque_immatriculation' => 'required|string|max:20',
-            'permis_conduire' => 'required|string|max:50',
-            'permis_categories' => 'nullable|string|max:50',
-        ]);
-
-        // Le permis est unique par personne, mais un chauffeur peut
-        // corriger sa propre fiche sans être bloqué par sa propre entrée.
-        $existant = Chauffeur::where('permis_conduire', $donnees['permis_conduire'])
-            ->where('utilisateur_id', '!=', $request->user()->id)
-            ->exists();
-
-        if ($existant) {
-            return response()->json([
-                'message' => 'The permis conduire has already been taken.',
-                'errors' => [
-                    'permis_conduire' => ['Ce numéro de permis est déjà utilisé.'],
-                ],
-            ], 422);
-        }
-
-        $chauffeur = Chauffeur::updateOrCreate(
-            ['utilisateur_id' => $request->user()->id],
-            [
-                ...$donnees,
-                'statut_validation' => 'en_attente',
-            ],
-        );
-
-        return response()->json([
-            'id' => $chauffeur->id,
-            'typeVehicule' => $chauffeur->type_vehicule,
-            'vehicule' => $chauffeur->vehicule_modele,
-            'plaque' => $chauffeur->plaque_immatriculation,
-            'permisConduire' => $chauffeur->permis_conduire,
-            'permisCategories' => $chauffeur->permis_categories,
-            'enLigne' => (bool) $chauffeur->en_ligne,
-            'disponible' => (bool) $chauffeur->disponibilite,
-            'statutValidation' => $chauffeur->statut_validation,
-            'noteMoyenne' => (float) $chauffeur->note_moyenne,
-            'nbCoursesTerminees' => $chauffeur->nb_courses_terminees,
-        ], 201);
-    }
-
     /** Fiche et état du chauffeur connecté. */
     public function moi(Request $request): JsonResponse
     {
@@ -225,6 +170,7 @@ class ChauffeurController extends Controller
                 'required', 'string', 'max:50',
                 Rule::unique('chauffeurs', 'permis_conduire')->ignore($existante?->id),
             ],
+            'permis_categories' => ['nullable', 'string', 'max:50'],
         ]);
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
@@ -250,6 +196,7 @@ class ChauffeurController extends Controller
             'typeVehicule' => $chauffeur->type_vehicule,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
+            'permisCategories' => $chauffeur->permis_categories,
             'enLigne' => false,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,

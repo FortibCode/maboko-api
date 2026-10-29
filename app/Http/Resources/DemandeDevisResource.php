@@ -40,7 +40,7 @@ class DemandeDevisResource extends JsonResource
             'termineeLe' => $this->resource->terminee_at?->toIso8601String(),
             'creeeLe' => $this->resource->created_at?->toIso8601String(),
 
-            'peutEtreNotee' => $this->resource->statut === DemandeDevis::STATUT_TERMINEE
+            'peutEtreNotee' => in_array($this->resource->statut, [DemandeDevis::STATUT_TERMINEE, DemandeDevis::STATUT_PAYEE], true)
                 && $this->resource->relationLoaded('avis')
                 && $this->resource->avis === null,
         ];
