@@ -166,7 +166,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/chauffeurs', [ComptesController::class, 'chauffeurs']);
             Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])->whereIn('type', ['artisans', 'chauffeurs']);
             Route::post('/utilisateurs/{utilisateur}/suspension', [ComptesController::class, 'basculerSuspension']);
-            Route::delete('/utilisateurs/{utilisateur}', [ComptesController::class, 'supprimerUtilisateur']);
+            
+            // 👇 MODIFICATION ICI : on utilise {utilisateurId} pour éviter le Route Model Binding
+            Route::delete('/utilisateurs/{utilisateurId}', [ComptesController::class, 'supprimerUtilisateur']);
+            
             Route::post('/artisans/{artisan}/badge', [ComptesController::class, 'attribuerBadge']);
 
             // Modération

@@ -208,10 +208,19 @@ class ComptesController extends Controller
 
     /**
      * Suppression définitive d'un compte.
-     * Utilise les relations Eloquent pour éviter les erreurs de nom de table.
+     * Utilise find() au lieu du Route Model Binding pour gérer le cas où
+     * l'utilisateur a déjà été supprimé.
      */
-    public function supprimerUtilisateur(Request $request, User $utilisateur): JsonResponse
+    public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
+        $utilisateur = User::find($utilisateurId);
+
+        if (! $utilisateur) {
+            return response()->json([
+                'message' => 'Cet utilisateur a déjà été supprimé.',
+            ], 200); // 200 pour que le frontend considère l'action comme réussie
+        }
+
         if ($utilisateur->estAdmin()) {
             return response()->json([
                 'message' => "Les comptes d'administration ne peuvent pas être supprimés depuis cet écran.",
@@ -265,7 +274,7 @@ class ComptesController extends Controller
                 $utilisateur->delete();
             });
         } catch (\Throwable $e) {
-            Log::error("Erreur de suppression pour l'utilisateur {$utilisateur->id} : " . $e->getMessage());
+            Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : " . $e->getMessage());
             return response()->json([
                 'message' => 'Suppression impossible : '.$e->getMessage(),
             ], 500);
