@@ -53,7 +53,6 @@ class ComptesController extends Controller
 
     /**
      * Annuaire des artisans, filtrable.
-     * On part de la table User pour voir même ceux sans fiche (comptes fantômes).
      */
     public function artisans(Request $request): JsonResponse
     {
@@ -151,7 +150,6 @@ class ComptesController extends Controller
             ['statut_validation' => $donnees['decision'], 'motif' => $donnees['motif'] ?? null],
         );
 
-        // On isole l'envoi de notification dans un try/catch pour éviter de bloquer la validation
         if ($fiche->utilisateur) {
             try {
                 $this->notifications->notifier(
@@ -210,6 +208,7 @@ class ComptesController extends Controller
 
     /**
      * Suppression définitive d'un compte.
+     * Utilise les relations Eloquent pour éviter les erreurs de nom de table.
      */
     public function supprimerUtilisateur(Request $request, User $utilisateur): JsonResponse
     {
@@ -229,33 +228,44 @@ class ComptesController extends Controller
 
         try {
             DB::transaction(function () use ($utilisateur) {
+                // 1. Révoquer tous les tokens
                 $utilisateur->tokens()->delete();
 
+                // 2. Supprimer la fiche artisan et ses dépendances via Eloquent
                 if ($artisan = $utilisateur->artisan) {
                     $artisan->metiers()->detach();
                     $artisan->badges()->detach();
-                    DB::table('demandes')->where('artisan_id', $artisan->id)->delete();
-                    DB::table('avis')->where('artisan_id', $artisan->id)->delete();
-                    DB::table('abonnements')->where('artisan_id', $artisan->id)->delete();
+                    
+                    // Ces méthodes utilisent les relations définies dans les modèles
+                    $artisan->demandes()->delete();      // Table demande_devis
+                    $artisan->avis()->delete();          // Table avis
+                    $artisan->abonnements()->delete();   // Table abonnements
+                    
                     $artisan->delete();
                 }
 
+                // 3. Supprimer la fiche chauffeur
                 if ($utilisateur->chauffeur) {
                     $utilisateur->chauffeur->delete();
                 }
 
-                DB::table('demandes')->where('client_id', $utilisateur->id)->delete();
-                DB::table('avis')->where('auteur_id', $utilisateur->id)->delete();
-                DB::table('favoris')->where('utilisateur_id', $utilisateur->id)->delete();
+                // 4. Supprimer les données du client via Eloquent
+                $utilisateur->demandes()->delete();      // Table demande_devis
+                $utilisateur->avisDeposes()->delete();   // Table avis
+                $utilisateur->favoris()->delete();       // Table favoris
+                $utilisateur->transactions()->delete();  // Table transactions
+                
+                // 5. Cas particuliers (tables pivot sans modèle direct)
                 DB::table('follows')
                     ->where('follower_id', $utilisateur->id)
                     ->orWhere('artisan_id', $utilisateur->id)
                     ->delete();
-                DB::table('transactions')->where('utilisateur_id', $utilisateur->id)->delete();
 
+                // 6. Supprimer l'utilisateur
                 $utilisateur->delete();
             });
         } catch (\Throwable $e) {
+            Log::error("Erreur de suppression pour l'utilisateur {$utilisateur->id} : " . $e->getMessage());
             return response()->json([
                 'message' => 'Suppression impossible : '.$e->getMessage(),
             ], 500);
