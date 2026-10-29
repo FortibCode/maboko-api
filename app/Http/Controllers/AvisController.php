@@ -10,6 +10,7 @@ use App\Services\ClassementArtisan;
 use App\Services\MoteurBadges;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
  * Avis clients : « sécuriser la relation client-artisan grâce aux avis,
@@ -58,6 +59,18 @@ class AvisController extends Controller
             'message' => 'Merci, votre avis est publié.',
             'avis' => new AvisResource($avis->load('auteur:id,nom,prenom,avatar_url')),
         ], 201);
+    }
+
+    /** Avis deposes par l'utilisateur connecte, ecran « Mes avis » (§5.1.10). */
+    public function mesAvis(Request $request): AnonymousResourceCollection
+    {
+        $avis = Avis::where('auteur_id', $request->user()->id)
+            ->with('artisan.utilisateur')
+            ->latest()
+            ->limit(100)
+            ->get();
+
+        return AvisResource::collection($avis);
     }
 
     /** Signaler un avis a la moderation (§5.4.2). */

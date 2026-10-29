@@ -17,6 +17,13 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Sur Render, chaque requete arrive par le repartiteur de charge : sans
+        // cette ligne, $request->ip() renvoie son adresse, et tous les
+        // utilisateurs partagent le meme compteur de tentatives de connexion.
+        // Le conteneur n'est joignable que par ce repartiteur, qui ecrit
+        // lui-meme X-Forwarded-For.
+        $middleware->trustProxies(at: '*');
+
         // Toute route API est limitee en debit, porte les en-tetes de securite
         // du paragraphe 7.1, et resout ses liaisons de modele.
         $middleware->api(prepend: [

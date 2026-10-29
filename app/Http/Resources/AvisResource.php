@@ -18,6 +18,7 @@ class AvisResource extends JsonResource
             'note' => $this->resource->note,
             'commentaire' => $this->resource->commentaire,
             'auteur' => new UtilisateurResource($this->whenLoaded('auteur')),
+            'artisan' => new ArtisanResource($this->whenLoaded('artisan')),
             'publieLe' => $this->resource->created_at?->toIso8601String(),
         ];
     }

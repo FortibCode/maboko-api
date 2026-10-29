@@ -127,6 +127,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/demandes/{demande}/avis', [AvisController::class, 'store']);
         Route::post('/avis/{avis}/signaler', [AvisController::class, 'signaler']);
+        Route::get('/compte/avis', [AvisController::class, 'mesAvis']);
 
         // Allô Chauffeur
         Route::post('/courses/estimation', [CourseController::class, 'estimer']);
