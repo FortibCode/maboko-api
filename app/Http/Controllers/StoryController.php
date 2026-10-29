@@ -2,67 +2,104 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\StoryResource;
 use App\Models\Story;
+use App\Models\StoryView;
 use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use RuntimeException;
 
-/**
- * Stories mettant en avant les travaux récents (§4.1, §5.1.4).
- * Elles restent visibles 24 heures.
- */
 class StoryController extends Controller
 {
-    private const DUREE_HEURES = 24;
-
     public function __construct(private MediaService $media) {}
 
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(): JsonResponse
     {
-        $suivis = $request->user()->abonnementsArtisans()->pluck('users.id');
-
-        $stories = Story::visibles()
-            ->with('artisan:id,nom,prenom,avatar_url')
-            ->when(
-                $suivis->isNotEmpty(),
-                fn ($r) => $r->whereIn('artisan_id', $suivis->push($request->user()->id)),
-            )
+        $stories = Story::with('utilisateur:id,nom,prenom,avatar_url')
+            ->actives()
             ->latest()
-            ->limit(50)
-            ->get();
+            ->get()
+            ->groupBy('utilisateur_id');
 
-        return StoryResource::collection($stories);
+        return response()->json(['data' => $stories]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $donnees = $request->validate([
             'media_url' => 'required|string',
-            'legende' => 'sometimes|nullable|string|max:255',
+            'type' => 'sometimes|string|in:image,video',
         ]);
 
         try {
+            // On enregistre l'image (base64) sur le serveur et on récupère l'URL
             $url = $this->media->enregistrerImage($donnees['media_url'], 'stories');
         } catch (RuntimeException $e) {
             return response()->json([
-                'message' => $e->getMessage(),
-                'errors' => ['media_url' => [$e->getMessage()]],
+                'message' => 'Erreur lors de l\'enregistrement de l\'image : ' . $e->getMessage()
             ], 422);
         }
 
         $story = Story::create([
-            'artisan_id' => $request->user()->id,
+            'utilisateur_id' => $request->user()->id,
             'media_url' => $url,
-            'legende' => $donnees['legende'] ?? null,
-            'expire_at' => now()->addHours(self::DUREE_HEURES),
+            'type' => $donnees['type'] ?? 'image',
+            'expires_at' => now()->addHours(2),
         ]);
 
-        return response()->json([
-            'message' => 'Story publiée pour 24 heures.',
-            'story' => new StoryResource($story->load('artisan:id,nom,prenom,avatar_url')),
-        ], 201);
+        return response()->json(['message' => 'Story publiée.', 'story' => $story], 201);
+    }
+
+    public function mesStories(Request $request): JsonResponse
+    {
+        $stories = Story::where('utilisateur_id', $request->user()->id)
+            ->actives()
+            ->withCount('vues')
+            ->latest()
+            ->get();
+
+        return response()->json(['data' => $stories]);
+    }
+
+    public function voirVues(Request $request, Story $story): JsonResponse
+    {
+        if ($story->utilisateur_id !== $request->user()->id) {
+            return response()->json(['message' => 'Non autorisé.'], 403);
+        }
+
+        $vues = $story->vues()
+            ->with('utilisateur:id,nom,prenom,avatar_url')
+            ->latest()
+            ->get()
+            ->map(fn($vue) => [
+                'id' => $vue->utilisateur->id,
+                'nom' => $vue->utilisateur->nom,
+                'prenom' => $vue->utilisateur->prenom,
+                'avatarUrl' => $vue->utilisateur->avatar_url,
+                'vu_le' => $vue->created_at->toIso8601String(),
+            ]);
+
+        return response()->json(['data' => $vues]);
+    }
+
+    public function marquerVue(Request $request, Story $story): JsonResponse
+    {
+        StoryView::firstOrCreate([
+            'story_id' => $story->id,
+            'user_id' => $request->user()->id,
+        ]);
+
+        return response()->json(['message' => 'Vue enregistrée.']);
+    }
+
+    public function destroy(Request $request, Story $story): JsonResponse
+    {
+        if ($story->utilisateur_id !== $request->user()->id) {
+            return response()->json(['message' => 'Non autorisé.'], 403);
+        }
+
+        $story->delete();
+
+        return response()->json(['message' => 'Story supprimée.']);
     }
 }
