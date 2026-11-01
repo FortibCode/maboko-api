@@ -30,6 +30,7 @@ class ChauffeurController extends Controller
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
+            'estClimatise' => (bool) $chauffeur->est_climatise, // 👈 AJOUT
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisConduire' => $chauffeur->permis_conduire,
@@ -138,14 +139,6 @@ class ChauffeurController extends Controller
 
     /**
      * Depot de la fiche vehicule par le chauffeur lui-meme (§5.3.1).
-     *
-     * Jusqu'ici seul le seeder creait des lignes « chauffeurs » : un compte
-     * inscrit depuis l'application n'avait aucun moyen d'obtenir sa fiche, et
-     * restait bloque sur un ecran l'invitant a contacter l'equipe.
-     *
-     * La fiche part en attente : c'est l'ecran d'administration existant qui
-     * la valide ou la refuse. Une modification apres validation repasse en
-     * attente, car le vehicule approuve n'est plus le meme.
      */
     public function enregistrerFiche(Request $request): JsonResponse
     {
@@ -160,7 +153,8 @@ class ChauffeurController extends Controller
         $existante = $this->fiche($request);
 
         $donnees = $request->validate([
-            'type_vehicule' => ['required', Rule::in([Chauffeur::VEHICULE_MOTO, Chauffeur::VEHICULE_VOITURE])],
+            // On accepte tous les types de véhicules envoyés par le mobile
+            'type_vehicule' => ['required', 'string', Rule::in(['taxi', 'voiture', 'utilitaire', 'camion', 'bus', 'moto'])],
             'vehicule_modele' => ['required', 'string', 'max:120'],
             'plaque_immatriculation' => [
                 'required', 'string', 'max:20',
@@ -171,13 +165,13 @@ class ChauffeurController extends Controller
                 Rule::unique('chauffeurs', 'permis_conduire')->ignore($existante?->id),
             ],
             'permis_categories' => ['nullable', 'string', 'max:50'],
+            'est_climatise' => ['sometimes', 'boolean'], // 👈 AJOUT
         ]);
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
         $donnees['valide_at'] = null;
 
         if ($existante) {
-            // Un vehicule non valide ne doit pas rester visible a l'appariement.
             $donnees['en_ligne'] = false;
             $existante->update($donnees);
             $chauffeur = $existante->fresh();
@@ -194,6 +188,7 @@ class ChauffeurController extends Controller
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
+            'estClimatise' => (bool) $chauffeur->est_climatise, // 👈 AJOUT
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisCategories' => $chauffeur->permis_categories,
