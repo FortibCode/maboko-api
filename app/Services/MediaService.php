@@ -35,17 +35,17 @@ class MediaService
     ];
 
     private const TYPES_AUDIO_AUTORISES = [
-        'audio/mp4'        => 'm4a',
-        'audio/x-m4a'      => 'm4a',
-        'audio/m4a'        => 'm4a',
-        'audio/aac'        => 'aac',
-        'audio/mpeg'       => 'mp3',
-        'audio/mp3'        => 'mp3',
-        'audio/ogg'        => 'ogg',
-        'audio/webm'       => 'webm',
-        'audio/wav'        => 'wav',
-        'audio/x-wav'      => 'wav',
-        'audio/3gpp'       => '3gp',
+        'audio/mp4' => 'm4a',
+        'audio/x-m4a' => 'm4a',
+        'audio/m4a' => 'm4a',
+        'audio/aac' => 'aac',
+        'audio/mpeg' => 'mp3',
+        'audio/mp3' => 'mp3',
+        'audio/ogg' => 'ogg',
+        'audio/webm' => 'webm',
+        'audio/wav' => 'wav',
+        'audio/x-wav' => 'wav',
+        'audio/3gpp' => '3gp',
     ];
 
     /**
@@ -226,7 +226,7 @@ class MediaService
     private function decoderAudio(string $valeur): array
     {
         if (! preg_match('#^data:(audio/[a-z0-9+-]+);base64,(.+)$#i', $valeur, $morceaux)) {
-            throw new RuntimeException("Format audio non reconnu.");
+            throw new RuntimeException('Format audio non reconnu.');
         }
 
         $typeMime = mb_strtolower($morceaux[1]);

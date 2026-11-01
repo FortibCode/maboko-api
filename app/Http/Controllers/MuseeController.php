@@ -264,8 +264,8 @@ class MuseeController extends Controller
             ->where('statut', User::STATUT_ACTIF)
             ->whereHas('artisan', function ($q) {
                 $q->where('statut_validation', 'valide')
-                  ->where('note_moyenne', '>=', 4.5)
-                  ->where('nb_missions_terminees', '>=', 10);
+                    ->where('note_moyenne', '>=', 4.5)
+                    ->where('nb_missions_terminees', '>=', 10);
             })
             ->pluck('id');
 
@@ -281,6 +281,7 @@ class MuseeController extends Controller
                     'statut' => MuseeSavoirFaire::STATUT_CANDIDAT,
                 ]);
                 $crees++;
+
                 continue;
             }
 

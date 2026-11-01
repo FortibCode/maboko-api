@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\Admin\ArtisanAdminResource;
 use App\Http\Resources\Admin\ChauffeurAdminResource;
 use App\Http\Resources\Admin\UserAdminResource;
 use App\Models\Artisan;
@@ -39,7 +38,7 @@ class ComptesController extends Controller
             ->when($request->filled('statut'), fn ($r) => $r->where('statut', $request->string('statut')))
             ->when($request->filled('q'), function ($r) use ($request) {
                 $terme = '%'.$request->string('q').'%';
-                $r->where(function($query) use ($terme) {
+                $r->where(function ($query) use ($terme) {
                     $query->where('nom', 'like', $terme)
                         ->orWhere('prenom', 'like', $terme)
                         ->orWhere('email', 'like', $terme)
@@ -163,7 +162,7 @@ class ComptesController extends Controller
                     important: true,
                 );
             } catch (\Throwable $e) {
-                Log::error("Échec de la notification (SMS/Push) lors de la validation : " . $e->getMessage());
+                Log::error('Échec de la notification (SMS/Push) lors de la validation : '.$e->getMessage());
             }
         }
 
@@ -213,8 +212,9 @@ class ComptesController extends Controller
      */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        // withTrashed() trouve l'utilisateur même s'il a été "soft deleted"
-        $utilisateur = User::withTrashed()->find($utilisateurId);
+        // User n'utilise pas SoftDeletes : un compte supprimé n'est plus en
+        // base, et find() suffit à le constater.
+        $utilisateur = User::find($utilisateurId);
 
         if (! $utilisateur) {
             return response()->json([
@@ -248,15 +248,17 @@ class ComptesController extends Controller
                     $artisan->demandes()->delete();
                     $artisan->avis()->delete();
                     $artisan->abonnements()->delete();
-                    
+
                     // Tables qui pourraient ne pas exister dans certaines bases
+                    // stories.artisan_id et posts.artisan_id désignent le compte
+                    // (users.id), pas la fiche artisan.
                     if (Schema::hasTable('stories')) {
-                        DB::table('stories')->where('artisan_id', $artisan->id)->delete();
+                        DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
                     }
                     if (Schema::hasTable('posts')) {
-                        DB::table('posts')->where('artisan_id', $artisan->id)->delete();
+                        DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
                     }
-                    
+
                     $artisan->delete();
                 }
 
@@ -270,7 +272,7 @@ class ComptesController extends Controller
                 $utilisateur->avisDeposes()->delete();
                 $utilisateur->favoris()->delete();
                 $utilisateur->transactions()->delete();
-                
+
                 if (method_exists($utilisateur, 'courses')) {
                     $utilisateur->courses()->delete();
                 }
@@ -294,7 +296,7 @@ class ComptesController extends Controller
                 // 7. Conversations (pivot participant)
                 if (Schema::hasTable('conversation_participants')) {
                     DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
-                    
+
                     if (Schema::hasTable('conversations')) {
                         DB::table('conversations')
                             ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
@@ -304,10 +306,10 @@ class ComptesController extends Controller
 
                 // 8. Likes et commentaires
                 if (Schema::hasTable('likes')) {
-                    DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
+                    DB::table('likes')->where('user_id', $utilisateur->id)->delete();
                 }
                 if (Schema::hasTable('commentaires')) {
-                    DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
+                    DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
                 }
 
                 // 9. Notifications
@@ -329,7 +331,8 @@ class ComptesController extends Controller
                 $utilisateur->forceDelete();
             });
         } catch (\Throwable $e) {
-            Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : " . $e->getMessage());
+            Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
+
             return response()->json([
                 'message' => 'Suppression impossible : '.$e->getMessage(),
             ], 500);
@@ -360,6 +363,7 @@ class ComptesController extends Controller
         if ($request->boolean('retirer')) {
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
+
             return response()->json(['message' => 'Badge retiré.']);
         }
 

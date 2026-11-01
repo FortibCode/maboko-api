@@ -25,8 +25,11 @@ class MuseeSavoirFaire extends Model
 
     // Statuts possibles.
     public const STATUT_CANDIDAT = 'candidat';
+
     public const STATUT_VALIDE = 'valide';
+
     public const STATUT_IGNORE = 'ignore';
+
     public const STATUT_BANNI = 'banni';
 
     protected $fillable = [
@@ -74,10 +77,10 @@ class MuseeSavoirFaire extends Model
     {
         return $requete->where(function (Builder $q) {
             $q->where('statut', self::STATUT_CANDIDAT)
-              ->orWhere(function (Builder $q2) {
-                  $q2->where('statut', self::STATUT_IGNORE)
-                     ->where('ignore_jusqua', '<=', now());
-              });
+                ->orWhere(function (Builder $q2) {
+                    $q2->where('statut', self::STATUT_IGNORE)
+                        ->where('ignore_jusqua', '<=', now());
+                });
         });
     }
 }

@@ -132,10 +132,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
 
-        // 👇 NOUVELLES ROUTES POUR LA NÉGOCIATION DE PRIX 👇
+        // Négociation de prix
         Route::post('/courses/{course}/contre-proposition', [CourseController::class, 'contreProposer']);
         Route::post('/courses/{course}/accepter-prix', [CourseController::class, 'accepterPrix']);
-        // 👆 FIN NOUVELLES ROUTES 👆
 
         Route::apiResource('missions', MissionController::class);
 
