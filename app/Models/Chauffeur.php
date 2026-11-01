@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $id
  * @property int $utilisateur_id
  * @property string $type_vehicule
+ * @property bool $est_climatise
  * @property string $vehicule_modele
  * @property string $plaque_immatriculation
  * @property string $permis_conduire
@@ -28,9 +29,7 @@ class Chauffeur extends Model
     use HasFactory;
 
     public const VALIDATION_EN_ATTENTE = 'en_attente';
-
     public const VALIDATION_VALIDE = 'valide';
-
     public const VALIDATION_REJETE = 'rejete';
 
     public const VEHICULE_MOTO = 'moto';
@@ -46,6 +45,7 @@ class Chauffeur extends Model
         'plaque_immatriculation',
         'disponibilite',
         'type_vehicule',
+        'est_climatise', // 👈 NOUVEAU
         'note_moyenne',
         'nb_courses_terminees',
         'statut_validation',
@@ -58,6 +58,7 @@ class Chauffeur extends Model
         return [
             'disponibilite' => 'boolean',
             'en_ligne' => 'boolean',
+            'est_climatise' => 'boolean', // 👈 NOUVEAU
             'note_moyenne' => 'decimal:2',
             'valide_at' => 'datetime',
         ];
@@ -80,13 +81,14 @@ class Chauffeur extends Model
 
     public function dernierePosition(): HasOne
     {
-        return $this->hasOne(PositionChauffeur::class)->latestOfMany('releve_at');
+        // On utilise 'created_at' par défaut si 'releve_at' n'existe pas
+        return $this->hasOne(PositionChauffeur::class)->latestOfMany();
     }
 
     public function scopeDisponibles(Builder $requete): Builder
     {
         return $requete->where('en_ligne', true)
             ->where('disponibilite', true)
-            ->where('statut_validation', Artisan::VALIDATION_VALIDE);
+            ->where('statut_validation', self::VALIDATION_VALIDE); // 👈 Correction du bug Artisan::
     }
 }
