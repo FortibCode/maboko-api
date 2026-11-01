@@ -43,6 +43,10 @@ class CourseResource extends JsonResource
             'dureeEstimeeMin' => $this->resource->duree_estimee_min,
             'tarifEstime' => (float) $this->resource->tarif_estime,
             'tarifFinal' => $this->resource->tarif_final ? (float) $this->resource->tarif_final : null,
+            // Négociation (§5.1.9) : prix proposé par le client, puis éventuel
+            // contre-prix du chauffeur, en attente de la réponse du client.
+            'prixClient' => $this->resource->prix_client !== null ? (float) $this->resource->prix_client : null,
+            'prixChauffeur' => $this->resource->prix_chauffeur !== null ? (float) $this->resource->prix_chauffeur : null,
 
             'client' => new UtilisateurResource($this->whenLoaded('client')),
 
@@ -52,6 +56,7 @@ class CourseResource extends JsonResource
                 'avatarUrl' => $chauffeur->utilisateur->avatar_url,
                 // Le client doit pouvoir reconnaître le véhicule qui arrive.
                 'vehicule' => $chauffeur->vehicule_modele,
+                'climatise' => (bool) $chauffeur->est_climatise,
                 'plaque' => $chauffeur->plaque_immatriculation,
                 'telephone' => $chauffeur->utilisateur->telephone,
                 'noteMoyenne' => (float) $chauffeur->note_moyenne,

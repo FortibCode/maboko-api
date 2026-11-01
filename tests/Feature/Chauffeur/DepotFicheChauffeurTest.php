@@ -52,6 +52,28 @@ class DepotFicheChauffeurTest extends TestCase
         ]);
     }
 
+    public function test_le_chauffeur_declare_un_vehicule_climatise(): void
+    {
+        $utilisateur = $this->chauffeurSansFiche();
+        Sanctum::actingAs($utilisateur);
+
+        $this->postJson('/api/v1/chauffeur', $this->fiche(['est_climatise' => true]))
+            ->assertCreated()
+            ->assertJsonPath('climatise', true);
+
+        $this->getJson('/api/v1/chauffeur')->assertJsonPath('climatise', true);
+        $this->assertDatabaseHas('chauffeurs', ['utilisateur_id' => $utilisateur->id, 'est_climatise' => true]);
+    }
+
+    public function test_sans_precision_le_vehicule_n_est_pas_climatise(): void
+    {
+        Sanctum::actingAs($this->chauffeurSansFiche());
+
+        $this->postJson('/api/v1/chauffeur', $this->fiche())
+            ->assertCreated()
+            ->assertJsonPath('climatise', false);
+    }
+
     public function test_la_fiche_deposee_n_est_pas_immediatement_en_ligne(): void
     {
         Sanctum::actingAs($this->chauffeurSansFiche());

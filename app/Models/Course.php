@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property int|null $chauffeur_id
+ * @property int|null $chauffeur_propose_id Chauffeur qui a fait une contre-proposition
  * @property int $utilisateur_id
  * @property string $statut
  * @property string $type_vehicule
@@ -22,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $terminee_at
  * @property Carbon|null $created_at
  * @property-read Chauffeur|null $chauffeur
+ * @property-read Chauffeur|null $chauffeurPropose
  * @property-read User $client
  */
 class Course extends Model
@@ -30,6 +32,12 @@ class Course extends Model
 
     /** Course créée, en attente qu'un chauffeur l'accepte. */
     public const STATUT_RECHERCHE = 'recherche';
+
+    /**
+     * Un chauffeur a proposé un autre prix : la course n'est plus offerte aux
+     * autres chauffeurs tant que le client n'a pas accepté ou refusé.
+     */
+    public const STATUT_NEGOCIATION = 'negociation';
 
     public const STATUT_ACCEPTEE = 'acceptee';
 
@@ -44,7 +52,7 @@ class Course extends Model
     public const STATUT_ANNULEE = 'annulee';
 
     public const STATUTS = [
-        self::STATUT_RECHERCHE, self::STATUT_ACCEPTEE, self::STATUT_EN_ROUTE,
+        self::STATUT_RECHERCHE, self::STATUT_NEGOCIATION, self::STATUT_ACCEPTEE, self::STATUT_EN_ROUTE,
         self::STATUT_PRISE_EN_CHARGE, self::STATUT_TERMINEE, self::STATUT_ANNULEE,
     ];
 
@@ -52,6 +60,7 @@ class Course extends Model
 
     protected $fillable = [
         'chauffeur_id',
+        'chauffeur_propose_id',
         'utilisateur_id',
         'lieu_depart',
         'lieu_arrivee',
@@ -64,6 +73,8 @@ class Course extends Model
         'duree_estimee_min',
         'tarif_estime',
         'tarif_final',
+        'prix_client',
+        'prix_chauffeur',
         'prix',
         'statut',
         'annulee_par',
@@ -83,6 +94,8 @@ class Course extends Model
             'distance_km' => 'decimal:2',
             'tarif_estime' => 'decimal:2',
             'tarif_final' => 'decimal:2',
+            'prix_client' => 'decimal:2',
+            'prix_chauffeur' => 'decimal:2',
             'prix' => 'decimal:2',
             'acceptee_at' => 'datetime',
             'prise_en_charge_at' => 'datetime',
@@ -95,6 +108,11 @@ class Course extends Model
         return $this->belongsTo(Chauffeur::class, 'chauffeur_id');
     }
 
+    public function chauffeurPropose(): BelongsTo
+    {
+        return $this->belongsTo(Chauffeur::class, 'chauffeur_propose_id');
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'utilisateur_id');
@@ -103,6 +121,15 @@ class Course extends Model
     public function estCloturee(): bool
     {
         return in_array($this->statut, [self::STATUT_TERMINEE, self::STATUT_ANNULEE], true);
+    }
+
+    /**
+     * Prix retenu pour la course : celui du chauffeur si le client l'a
+     * accepté, sinon celui proposé par le client, sinon l'estimation.
+     */
+    public function tarifConvenu(): float
+    {
+        return (float) ($this->prix_chauffeur ?? $this->prix_client ?? $this->tarif_estime);
     }
 
     /** Course en cours : elle occupe le chauffeur et suit le client. */

@@ -44,6 +44,7 @@ class Chauffeur extends Model
         'permis_conduire',
         'permis_categories',
         'vehicule_modele',
+        'est_climatise',
         'plaque_immatriculation',
         'disponibilite',
         'type_vehicule',
@@ -59,6 +60,7 @@ class Chauffeur extends Model
         return [
             'disponibilite' => 'boolean',
             'en_ligne' => 'boolean',
+            'est_climatise' => 'boolean',
             'note_moyenne' => 'decimal:2',
             'valide_at' => 'datetime',
         ];
