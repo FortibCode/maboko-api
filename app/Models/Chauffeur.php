@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $utilisateur_id
  * @property string $type_vehicule
  * @property bool $est_climatise
+ * @property string|null $photo_recto
+ * @property string|null $photo_verso
  * @property string $vehicule_modele
  * @property string $plaque_immatriculation
  * @property string $permis_conduire
@@ -33,7 +35,6 @@ class Chauffeur extends Model
     public const VALIDATION_REJETE = 'rejete';
 
     public const VEHICULE_MOTO = 'moto';
-
     public const VEHICULE_VOITURE = 'voiture';
 
     protected $table = 'chauffeurs';
@@ -43,11 +44,12 @@ class Chauffeur extends Model
         'permis_conduire',
         'permis_categories',
         'vehicule_modele',
-        'est_climatise',
         'plaque_immatriculation',
         'disponibilite',
         'type_vehicule',
-        'est_climatise', // 👈 NOUVEAU
+        'est_climatise',
+        'photo_recto', // 👈 AJOUT
+        'photo_verso', // 👈 AJOUT
         'note_moyenne',
         'nb_courses_terminees',
         'statut_validation',
@@ -60,11 +62,7 @@ class Chauffeur extends Model
         return [
             'disponibilite' => 'boolean',
             'en_ligne' => 'boolean',
-<<<<<<< HEAD
-            'est_climatise' => 'boolean', // 👈 NOUVEAU
-=======
             'est_climatise' => 'boolean',
->>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
             'note_moyenne' => 'decimal:2',
             'valide_at' => 'datetime',
         ];
@@ -87,7 +85,6 @@ class Chauffeur extends Model
 
     public function dernierePosition(): HasOne
     {
-        // On utilise 'created_at' par défaut si 'releve_at' n'existe pas
         return $this->hasOne(PositionChauffeur::class)->latestOfMany();
     }
 
@@ -95,6 +92,6 @@ class Chauffeur extends Model
     {
         return $requete->where('en_ligne', true)
             ->where('disponibilite', true)
-            ->where('statut_validation', self::VALIDATION_VALIDE); // 👈 Correction du bug Artisan::
+            ->where('statut_validation', self::VALIDATION_VALIDE);
     }
 }

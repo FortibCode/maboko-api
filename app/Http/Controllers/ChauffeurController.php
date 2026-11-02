@@ -5,15 +5,19 @@ namespace App\Http\Controllers;
 use App\Models\Chauffeur;
 use App\Models\Course;
 use App\Models\PositionChauffeur;
+use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 /**
  * Espace du chauffeur (§5.3) : fiche, disponibilité, position et revenus.
  */
 class ChauffeurController extends Controller
 {
+    public function __construct(private MediaService $media) {} // 👈 INJECTION
+
     /** Fiche et état du chauffeur connecté. */
     public function moi(Request $request): JsonResponse
     {
@@ -30,12 +34,11 @@ class ChauffeurController extends Controller
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
-            'estClimatise' => (bool) $chauffeur->est_climatise, // 👈 AJOUT
+            'estClimatise' => (bool) $chauffeur->est_climatise,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisConduire' => $chauffeur->permis_conduire,
             'permisCategories' => $chauffeur->permis_categories,
-            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => (bool) $chauffeur->en_ligne,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
@@ -130,7 +133,7 @@ class ChauffeurController extends Controller
 
         return response()->json([
             'aujourdhui' => (float) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->sum('tarif_final'),
-            'coursesAujourdhui' => (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
+            'coursesAujourdhui' => (float) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
             'semaine' => $semaine->values(),
             'totalSemaine' => (float) $semaine->sum('total'),
             'total' => (float) (clone $terminees)->sum('tarif_final'),
@@ -154,7 +157,6 @@ class ChauffeurController extends Controller
         $existante = $this->fiche($request);
 
         $donnees = $request->validate([
-            // On accepte tous les types de véhicules envoyés par le mobile
             'type_vehicule' => ['required', 'string', Rule::in(['taxi', 'voiture', 'utilitaire', 'camion', 'bus', 'moto'])],
             'vehicule_modele' => ['required', 'string', 'max:120'],
             'plaque_immatriculation' => [
@@ -166,12 +168,27 @@ class ChauffeurController extends Controller
                 Rule::unique('chauffeurs', 'permis_conduire')->ignore($existante?->id),
             ],
             'permis_categories' => ['nullable', 'string', 'max:50'],
-<<<<<<< HEAD
-            'est_climatise' => ['sometimes', 'boolean'], // 👈 AJOUT
-=======
             'est_climatise' => ['sometimes', 'boolean'],
->>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
+            'photo_recto' => ['sometimes', 'string'], // 👈 AJOUT
+            'photo_verso' => ['sometimes', 'string'], // 👈 AJOUT
         ]);
+
+        // 👇 GESTION DES PHOTOS 👇
+        if (!empty($donnees['photo_recto'])) {
+            try {
+                $donnees['photo_recto'] = $this->media->enregistrerImage($donnees['photo_recto'], 'identites_chauffeurs');
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => 'Erreur photo recto : ' . $e->getMessage()], 422);
+            }
+        }
+        if (!empty($donnees['photo_verso'])) {
+            try {
+                $donnees['photo_verso'] = $this->media->enregistrerImage($donnees['photo_verso'], 'identites_chauffeurs');
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => 'Erreur photo verso : ' . $e->getMessage()], 422);
+            }
+        }
+        // 👆 FIN GESTION 👆
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
         $donnees['valide_at'] = null;
@@ -193,11 +210,10 @@ class ChauffeurController extends Controller
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
-            'estClimatise' => (bool) $chauffeur->est_climatise, // 👈 AJOUT
+            'estClimatise' => (bool) $chauffeur->est_climatise,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisCategories' => $chauffeur->permis_categories,
-            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => false,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
