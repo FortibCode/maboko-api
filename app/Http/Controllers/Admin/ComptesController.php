@@ -19,9 +19,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Gestion des artisans, des chauffeurs et de l'ensemble des utilisateurs (§5.4.3).
- */
 class ComptesController extends Controller
 {
     public function __construct(
@@ -30,7 +27,6 @@ class ComptesController extends Controller
         private MoteurBadges $badges,
     ) {}
 
-    /** Annuaire global de tous les utilisateurs. */
     public function utilisateurs(Request $request): AnonymousResourceCollection
     {
         $utilisateurs = User::query()
@@ -51,9 +47,6 @@ class ComptesController extends Controller
         return UserAdminResource::collection($utilisateurs);
     }
 
-    /**
-     * Annuaire des artisans, filtrable.
-     */
     public function artisans(Request $request): JsonResponse
     {
         $requete = User::query()
@@ -63,7 +56,6 @@ class ComptesController extends Controller
             ])
             ->when($request->filled('statut'), function ($r) use ($request) {
                 $statut = (string) $request->string('statut');
-
                 if ($statut === 'sans_fiche') {
                     $r->doesntHave('artisan');
                 } else {
@@ -84,7 +76,6 @@ class ComptesController extends Controller
 
         return response()->json($requete->paginate(25)->through(function (User $u) {
             $fiche = $u->artisan;
-
             return [
                 'id' => $fiche?->id,
                 'utilisateurId' => $u->id,
@@ -106,7 +97,6 @@ class ComptesController extends Controller
         }));
     }
 
-    /** Annuaire des chauffeurs. */
     public function chauffeurs(Request $request): AnonymousResourceCollection
     {
         $chauffeurs = Chauffeur::query()
@@ -118,7 +108,6 @@ class ComptesController extends Controller
         return ChauffeurAdminResource::collection($chauffeurs);
     }
 
-    /** Validation d'une inscription artisan ou chauffeur. */
     public function valider(Request $request, string $type, int $id): JsonResponse
     {
         $donnees = $request->validate([
@@ -137,7 +126,6 @@ class ComptesController extends Controller
         }
 
         $avant = $fiche->statut_validation;
-
         $fiche->update([
             'statut_validation' => $donnees['decision'],
             'valide_at' => $donnees['decision'] === 'valide' ? now() : null,
@@ -172,7 +160,6 @@ class ComptesController extends Controller
         ]);
     }
 
-    /** Suspension ou réactivation d'un compte. */
     public function basculerSuspension(Request $request, User $utilisateur): JsonResponse
     {
         $donnees = $request->validate([
@@ -206,14 +193,8 @@ class ComptesController extends Controller
         ]);
     }
 
-    /**
-     * Suppression définitive d'un compte.
-     * Utilise forceDelete() pour vraiment libérer le téléphone et l'email.
-     */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        // User n'utilise pas SoftDeletes : un compte supprimé n'est plus en
-        // base, et find() suffit à le constater.
         $utilisateur = User::find($utilisateurId);
 
         if (! $utilisateur) {
@@ -249,9 +230,6 @@ class ComptesController extends Controller
                     $artisan->avis()->delete();
                     $artisan->abonnements()->delete();
 
-                    // Tables qui pourraient ne pas exister dans certaines bases
-                    // stories.artisan_id et posts.artisan_id désignent le compte
-                    // (users.id), pas la fiche artisan.
                     if (Schema::hasTable('stories')) {
                         DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
                     }
@@ -289,8 +267,10 @@ class ComptesController extends Controller
                 }
 
                 // 6. Messages (expéditeur)
-                if (Schema::hasTable('messages')) {
+                if (Schema::hasTable('messages') && Schema::hasColumn('messages', 'expediteur_id')) {
                     DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
+                } elseif (Schema::hasTable('messages') && Schema::hasColumn('messages', 'user_id')) {
+                    DB::table('messages')->where('user_id', $utilisateur->id)->delete();
                 }
 
                 // 7. Conversations (pivot participant)
@@ -304,20 +284,32 @@ class ComptesController extends Controller
                     }
                 }
 
-                // 8. Likes et commentaires
+                // 8. Likes et commentaires (vérification des colonnes)
                 if (Schema::hasTable('likes')) {
-                    DB::table('likes')->where('user_id', $utilisateur->id)->delete();
+                    if (Schema::hasColumn('likes', 'utilisateur_id')) {
+                        DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
+                    } elseif (Schema::hasColumn('likes', 'user_id')) {
+                        DB::table('likes')->where('user_id', $utilisateur->id)->delete();
+                    }
                 }
                 if (Schema::hasTable('commentaires')) {
-                    DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
+                    if (Schema::hasColumn('commentaires', 'auteur_id')) {
+                        DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
+                    } elseif (Schema::hasColumn('commentaires', 'user_id')) {
+                        DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
+                    }
                 }
 
-                // 9. Notifications
+                // 9. Notifications (vérification des colonnes)
                 if (Schema::hasTable('notifications')) {
-                    DB::table('notifications')
-                        ->where('notifiable_id', $utilisateur->id)
-                        ->where('notifiable_type', User::class)
-                        ->delete();
+                    if (Schema::hasColumn('notifications', 'notifiable_id')) {
+                        DB::table('notifications')
+                            ->where('notifiable_id', $utilisateur->id)
+                            ->where('notifiable_type', User::class)
+                            ->delete();
+                    } elseif (Schema::hasColumn('notifications', 'user_id')) {
+                        DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
+                    }
                 }
 
                 // 10. Vérification identité
@@ -327,12 +319,11 @@ class ComptesController extends Controller
                     }
                 }
 
-                // 11. SUPPRESSION DÉFINITIVE (forceDelete libère le téléphone et l'email)
+                // 11. SUPPRESSION DÉFINITIVE
                 $utilisateur->forceDelete();
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
-
             return response()->json([
                 'message' => 'Suppression impossible : '.$e->getMessage(),
             ], 500);
@@ -350,7 +341,6 @@ class ComptesController extends Controller
         ]);
     }
 
-    /** Attribution manuelle d'un badge (§4.5). */
     public function attribuerBadge(Request $request, Artisan $artisan): JsonResponse
     {
         $donnees = $request->validate([
@@ -363,7 +353,6 @@ class ComptesController extends Controller
         if ($request->boolean('retirer')) {
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
-
             return response()->json(['message' => 'Badge retiré.']);
         }
 
