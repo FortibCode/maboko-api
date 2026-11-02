@@ -33,7 +33,6 @@ class Chauffeur extends Model
     public const VALIDATION_REJETE = 'rejete';
 
     public const VEHICULE_MOTO = 'moto';
-
     public const VEHICULE_VOITURE = 'voiture';
 
     protected $table = 'chauffeurs';
@@ -46,7 +45,7 @@ class Chauffeur extends Model
         'plaque_immatriculation',
         'disponibilite',
         'type_vehicule',
-        'est_climatise', // 👈 NOUVEAU
+        'est_climatise', // 👈 NOUVEAU (gardé une seule fois)
         'note_moyenne',
         'nb_courses_terminees',
         'statut_validation',
@@ -90,6 +89,6 @@ class Chauffeur extends Model
     {
         return $requete->where('en_ligne', true)
             ->where('disponibilite', true)
-            ->where('statut_validation', self::VALIDATION_VALIDE); // 👈 Correction du bug Artisan::
+            ->where('statut_validation', self::VALIDATION_VALIDE);
     }
 }

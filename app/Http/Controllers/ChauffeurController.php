@@ -153,7 +153,6 @@ class ChauffeurController extends Controller
         $existante = $this->fiche($request);
 
         $donnees = $request->validate([
-            // On accepte tous les types de véhicules envoyés par le mobile
             'type_vehicule' => ['required', 'string', Rule::in(['taxi', 'voiture', 'utilitaire', 'camion', 'bus', 'moto'])],
             'vehicule_modele' => ['required', 'string', 'max:120'],
             'plaque_immatriculation' => [

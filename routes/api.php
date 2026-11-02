@@ -118,6 +118,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses', [CourseController::class, 'store']);
         Route::get('/courses/{course}', [CourseController::class, 'show']);
         Route::post('/courses/{course}/annuler', [CourseController::class, 'annuler']);
+        // Réponse du client à la contre-proposition d'un chauffeur (§5.1.9)
+        Route::post('/courses/{course}/accepter-prix', [CourseController::class, 'accepterPrix']);
+        Route::post('/courses/{course}/refuser-prix', [CourseController::class, 'refuserPrix']);
 
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
         Route::post('/chauffeur', [ChauffeurController::class, 'enregistrerFiche']);
@@ -128,6 +131,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/chauffeur/propositions', [CourseController::class, 'propositions']);
         Route::post('/courses/{course}/accepter', [CourseController::class, 'accepter']);
         Route::post('/courses/{course}/refuser', [CourseController::class, 'refuser']);
+        Route::post('/courses/{course}/contre-proposition', [CourseController::class, 'contreProposer']);
         Route::post('/courses/{course}/demarrer', [CourseController::class, 'demarrer']);
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
