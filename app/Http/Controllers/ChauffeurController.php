@@ -35,6 +35,7 @@ class ChauffeurController extends Controller
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisConduire' => $chauffeur->permis_conduire,
             'permisCategories' => $chauffeur->permis_categories,
+            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => (bool) $chauffeur->en_ligne,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
@@ -165,7 +166,11 @@ class ChauffeurController extends Controller
                 Rule::unique('chauffeurs', 'permis_conduire')->ignore($existante?->id),
             ],
             'permis_categories' => ['nullable', 'string', 'max:50'],
+<<<<<<< HEAD
             'est_climatise' => ['sometimes', 'boolean'], // 👈 AJOUT
+=======
+            'est_climatise' => ['sometimes', 'boolean'],
+>>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
         ]);
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
@@ -192,6 +197,7 @@ class ChauffeurController extends Controller
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisCategories' => $chauffeur->permis_categories,
+            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => false,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,

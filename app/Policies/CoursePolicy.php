@@ -18,7 +18,14 @@ class CoursePolicy
     {
         return $course->utilisateur_id === $user->id
             || $this->estLeChauffeur($user, $course)
+            || $this->aFaitLaContreProposition($user, $course)
             || $user->estAdmin();
+    }
+
+    /** Seul le client répond à la contre-proposition d'un chauffeur. */
+    public function negocier(User $user, Course $course): bool
+    {
+        return $course->utilisateur_id === $user->id;
     }
 
     /** Seul le chauffeur attribué fait avancer la course. */
@@ -38,6 +45,12 @@ class CoursePolicy
         }
 
         return $course->utilisateur_id === $user->id || $this->estLeChauffeur($user, $course);
+    }
+
+    private function aFaitLaContreProposition(User $user, Course $course): bool
+    {
+        return $course->chauffeurPropose !== null
+            && $course->chauffeurPropose->utilisateur_id === $user->id;
     }
 
     private function estLeChauffeur(User $user, Course $course): bool

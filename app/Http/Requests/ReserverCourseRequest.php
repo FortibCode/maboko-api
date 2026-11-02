@@ -21,10 +21,6 @@ class ReserverCourseRequest extends FormRequest
             'arrivee_latitude' => 'required|numeric|between:-90,90',
             'arrivee_longitude' => 'required|numeric|between:-180,180',
             'type_vehicule' => ['required', Rule::in([Chauffeur::VEHICULE_MOTO, Chauffeur::VEHICULE_VOITURE])],
-            
-            // 👇 NOUVEAU : Le prix proposé par le client
-            'prix_client' => 'nullable|numeric|min:0',
-            // 👆 FIN NOUVEAU
         ];
     }
 }

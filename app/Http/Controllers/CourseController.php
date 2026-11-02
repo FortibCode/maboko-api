@@ -70,6 +70,7 @@ class CourseController extends Controller
         $enCours = Course::where('utilisateur_id', $utilisateur->id)
             ->whereIn('statut', [
                 Course::STATUT_RECHERCHE,
+                Course::STATUT_NEGOCIATION,
                 Course::STATUT_ACCEPTEE,
                 Course::STATUT_EN_ROUTE,
                 Course::STATUT_PRISE_EN_CHARGE,
@@ -255,6 +256,139 @@ class CourseController extends Controller
         return $this->reponse($course, 'Course acceptée.');
     }
 
+<<<<<<< HEAD
+=======
+    /**
+     * Le chauffeur propose un autre prix que celui du client (§5.1.9).
+     *
+     * La course lui est réservée le temps que le client réponde : elle sort
+     * des propositions des autres chauffeurs. Comme pour l'acceptation, la
+     * mise à jour est conditionnelle pour que deux offres simultanées ne
+     * s'écrasent pas.
+     */
+    public function contreProposer(Request $request, Course $course): JsonResponse
+    {
+        $chauffeur = $this->ficheChauffeur($request);
+
+        if (! $chauffeur) {
+            return response()->json(['message' => 'Aucune fiche chauffeur rattachée à ce compte.'], 403);
+        }
+
+        if ($course->type_vehicule !== $chauffeur->type_vehicule) {
+            return response()->json(['message' => 'Cette course demande un autre type de véhicule.'], 422);
+        }
+
+        $donnees = $request->validate([
+            'prix_chauffeur' => 'required|numeric|min:100|max:1000000',
+        ]);
+
+        $reservee = Course::whereKey($course->id)
+            ->where('statut', Course::STATUT_RECHERCHE)
+            ->whereNull('chauffeur_id')
+            ->update([
+                'statut' => Course::STATUT_NEGOCIATION,
+                'chauffeur_propose_id' => $chauffeur->id,
+                'prix_chauffeur' => $donnees['prix_chauffeur'],
+            ]);
+
+        if ($reservee === 0) {
+            return response()->json(['message' => 'Cette course n’est plus proposée.'], 409);
+        }
+
+        $course->refresh();
+
+        $this->notifierClient(
+            $course,
+            'Un chauffeur vous propose un prix',
+            number_format((float) $course->prix_chauffeur, 0, ',', ' ').' FCFA pour votre course. Acceptez ou refusez.',
+            important: true,
+        );
+
+        return $this->reponse($course, 'Proposition envoyée au client.');
+    }
+
+    /** Le client accepte le prix proposé par le chauffeur (§5.1.9). */
+    public function accepterPrix(Request $request, Course $course): JsonResponse
+    {
+        $this->authorize('negocier', $course);
+
+        $chauffeur = $course->chauffeurPropose;
+
+        if ($course->statut !== Course::STATUT_NEGOCIATION || ! $chauffeur) {
+            return response()->json(['message' => 'Aucune proposition en attente pour cette course.'], 409);
+        }
+
+        // Le chauffeur a pu passer hors ligne ou prendre une autre course
+        // pendant que le client réfléchissait.
+        $occupe = ! $chauffeur->en_ligne
+            || ! $chauffeur->disponibilite
+            || Course::where('chauffeur_id', $chauffeur->id)->actives()->exists();
+
+        if ($occupe) {
+            $this->rouvrir($course, $chauffeur);
+
+            return response()->json([
+                'message' => 'Ce chauffeur n’est plus disponible. Nous cherchons un autre chauffeur.',
+                'course' => new CourseResource($course->fresh(['client'])),
+            ], 409);
+        }
+
+        $attribuee = Course::whereKey($course->id)
+            ->where('statut', Course::STATUT_NEGOCIATION)
+            ->where('chauffeur_propose_id', $chauffeur->id)
+            ->update([
+                'chauffeur_id' => $chauffeur->id,
+                'statut' => Course::STATUT_ACCEPTEE,
+                'acceptee_at' => now(),
+            ]);
+
+        if ($attribuee === 0) {
+            return response()->json(['message' => 'Cette proposition n’est plus valable.'], 409);
+        }
+
+        $chauffeur->update(['disponibilite' => false]);
+
+        $this->notifications->notifier(
+            $chauffeur->utilisateur,
+            'Prix accepté',
+            'Le client a accepté votre prix. Rendez-vous au point de départ.',
+            type: 'course_prix_accepte',
+            donnees: ['course_id' => $course->id],
+            important: true,
+        );
+
+        return $this->reponse($course, 'Prix accepté. Votre chauffeur arrive.');
+    }
+
+    /**
+     * Le client refuse le prix du chauffeur : la course repart vers les
+     * autres chauffeurs, et ne revient plus à celui-ci.
+     */
+    public function refuserPrix(Request $request, Course $course): JsonResponse
+    {
+        $this->authorize('negocier', $course);
+
+        $chauffeur = $course->chauffeurPropose;
+
+        if ($course->statut !== Course::STATUT_NEGOCIATION || ! $chauffeur) {
+            return response()->json(['message' => 'Aucune proposition en attente pour cette course.'], 409);
+        }
+
+        $this->rouvrir($course, $chauffeur);
+
+        $this->notifications->notifier(
+            $chauffeur->utilisateur,
+            'Prix refusé',
+            'Le client a refusé votre proposition.',
+            type: 'course_prix_refuse',
+            donnees: ['course_id' => $course->id],
+        );
+
+        return $this->reponse($course, 'Proposition refusée. Nous cherchons un autre chauffeur.');
+    }
+
+    /** Le chauffeur roule vers le point de prise en charge. */
+>>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
     public function demarrer(Request $request, Course $course): JsonResponse
     {
         $this->authorize('conduire', $course);
@@ -289,7 +423,11 @@ class CourseController extends Controller
         ]);
         $course->update([
             'statut' => Course::STATUT_TERMINEE,
+<<<<<<< HEAD
             'tarif_final' => $donnees['tarif_final'] ?? $course->prix, // Utilise le prix négocié par défaut
+=======
+            'tarif_final' => $donnees['tarif_final'] ?? $course->tarifConvenu(),
+>>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
             'terminee_at' => now(),
         ]);
         $this->appariement->libererChauffeur($course);
@@ -327,13 +465,32 @@ class CourseController extends Controller
                 $chauffeur->utilisateur,
                 'Nouvelle course disponible',
                 $course->lieu_depart.' → '.$course->lieu_arrivee
+<<<<<<< HEAD
                     .' · '.number_format((float) $course->prix_client, 0, ',', ' ').' FCFA (proposé)',
+=======
+                    .' · '.number_format($course->tarifConvenu(), 0, ',', ' ').' FCFA',
+>>>>>>> e16c777a49d27e86e9d218d6e075e9e20e92f31f
                 type: 'course_proposee',
                 donnees: ['course_id' => $course->id],
                 important: true,
             );
         }
         return $candidats->count();
+    }
+
+    /** Remet une course en négociation à la disposition des autres chauffeurs. */
+    private function rouvrir(Course $course, Chauffeur $chauffeur): void
+    {
+        $course->update([
+            'statut' => Course::STATUT_RECHERCHE,
+            'chauffeur_propose_id' => null,
+            'prix_chauffeur' => null,
+        ]);
+
+        RefusCourse::firstOrCreate([
+            'course_id' => $course->id,
+            'chauffeur_id' => $chauffeur->id,
+        ]);
     }
 
     private function notifierClient(Course $course, string $titre, string $corps, bool $important = false): void
