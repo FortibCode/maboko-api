@@ -13,27 +13,14 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
-/**
- * @property int $id
- * @property string $nom
- * @property string|null $prenom
- * @property string|null $avatar_url
- * @property string $role
- * @property string $statut
- * @property Carbon|null $derniere_connexion_at
- */
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
     public const ROLE_CLIENT = 'client';
-
     public const ROLE_ARTISAN = 'artisan';
-
     public const ROLE_CHAUFFEUR = 'chauffeur';
-
     public const ROLE_ADMIN = 'admin';
-
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
     public const ROLES = [
@@ -45,7 +32,6 @@ class User extends Authenticatable
     ];
 
     public const STATUT_ACTIF = 'actif';
-
     public const STATUT_SUSPENDU = 'suspendu';
 
     protected $table = 'users';
@@ -80,7 +66,7 @@ class User extends Authenticatable
     }
 
     // ------------------------------------------------------------------
-    // Roles
+    // Rôles
     // ------------------------------------------------------------------
 
     public function estArtisan(): bool
@@ -173,6 +159,15 @@ class User extends Authenticatable
     public function verificationIdentite(): HasOne
     {
         return $this->hasOne(VerificationIdentite::class)->latestOfMany();
+    }
+
+    /**
+     * 👇 CORRECTION CRUCIALE : On dit à Laravel que la table notifications
+     * utilise la colonne 'artisan_id' au lieu de 'notifiable_id'.
+     */
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class, 'artisan_id');
     }
 
     protected function avatarUrl(): Attribute

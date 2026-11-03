@@ -21,8 +21,6 @@ class Notification extends Model
         'title',
         'body',
         'is_read',
-        // Ces quatre colonnes existaient en base mais pas ici : elles étaient
-        // silencieusement ignorées à l'écriture.
         'type',
         'canal',
         'donnees',
