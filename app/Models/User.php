@@ -9,13 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    // 👇 J'ai retiré le trait Notifiable qui causait l'erreur "notifiable_id"
+    use HasApiTokens, HasFactory;
 
     public const ROLE_CLIENT = 'client';
     public const ROLE_ARTISAN = 'artisan';
@@ -162,8 +162,8 @@ class User extends Authenticatable
     }
 
     /**
-     * 👇 CORRECTION CRUCIALE : On dit à Laravel que la table notifications
-     * utilise la colonne 'artisan_id' au lieu de 'notifiable_id'.
+     * Relation customisée pour pointer vers 'artisan_id' 
+     * (puisque la table notifications utilise cette colonne).
      */
     public function notifications(): HasMany
     {
