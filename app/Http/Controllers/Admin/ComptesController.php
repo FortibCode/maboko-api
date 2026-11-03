@@ -219,33 +219,27 @@ class ComptesController extends Controller
 
         try {
             DB::transaction(function () use ($utilisateur) {
-                // 1. Tokens
                 $utilisateur->tokens()->delete();
 
-                // 2. Fiche artisan + dépendances
                 if ($artisan = $utilisateur->artisan) {
                     $artisan->metiers()->detach();
                     $artisan->badges()->detach();
                     $artisan->demandes()->delete();
                     $artisan->avis()->delete();
                     $artisan->abonnements()->delete();
-
                     if (Schema::hasTable('stories')) {
                         DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
                     }
                     if (Schema::hasTable('posts')) {
                         DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
                     }
-
                     $artisan->delete();
                 }
 
-                // 3. Fiche chauffeur
                 if ($utilisateur->chauffeur) {
                     $utilisateur->chauffeur()->delete();
                 }
 
-                // 4. Données du client
                 $utilisateur->demandes()->delete();
                 $utilisateur->avisDeposes()->delete();
                 $utilisateur->favoris()->delete();
@@ -258,7 +252,6 @@ class ComptesController extends Controller
                     $utilisateur->otpCodes()->delete();
                 }
 
-                // 5. Follows (pivot)
                 if (Schema::hasTable('follows')) {
                     DB::table('follows')
                         ->where('follower_id', $utilisateur->id)
@@ -266,17 +259,12 @@ class ComptesController extends Controller
                         ->delete();
                 }
 
-                // 6. Messages (expéditeur)
                 if (Schema::hasTable('messages') && Schema::hasColumn('messages', 'expediteur_id')) {
                     DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
-                } elseif (Schema::hasTable('messages') && Schema::hasColumn('messages', 'user_id')) {
-                    DB::table('messages')->where('user_id', $utilisateur->id)->delete();
                 }
 
-                // 7. Conversations (pivot participant)
                 if (Schema::hasTable('conversation_participants')) {
                     DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
-
                     if (Schema::hasTable('conversations')) {
                         DB::table('conversations')
                             ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
@@ -284,42 +272,22 @@ class ComptesController extends Controller
                     }
                 }
 
-                // 8. Likes et commentaires (vérification des colonnes)
-                if (Schema::hasTable('likes')) {
-                    if (Schema::hasColumn('likes', 'utilisateur_id')) {
-                        DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
-                    } elseif (Schema::hasColumn('likes', 'user_id')) {
-                        DB::table('likes')->where('user_id', $utilisateur->id)->delete();
-                    }
+                if (Schema::hasTable('likes') && Schema::hasColumn('likes', 'utilisateur_id')) {
+                    DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
                 }
-                if (Schema::hasTable('commentaires')) {
-                    if (Schema::hasColumn('commentaires', 'auteur_id')) {
-                        DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
-                    } elseif (Schema::hasColumn('commentaires', 'user_id')) {
-                        DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
-                    }
+                if (Schema::hasTable('commentaires') && Schema::hasColumn('commentaires', 'auteur_id')) {
+                    DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
                 }
 
-                // 9. Notifications (vérification des colonnes)
-                if (Schema::hasTable('notifications')) {
-                    if (Schema::hasColumn('notifications', 'notifiable_id')) {
-                        DB::table('notifications')
-                            ->where('notifiable_id', $utilisateur->id)
-                            ->where('notifiable_type', User::class)
-                            ->delete();
-                    } elseif (Schema::hasColumn('notifications', 'user_id')) {
-                        DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
-                    }
-                }
+                // 👇 On utilise la relation Eloquent qui pointe sur 'artisan_id'
+                $utilisateur->notifications()->delete();
 
-                // 10. Vérification identité
                 if (method_exists($utilisateur, 'verificationIdentite')) {
                     if ($verif = $utilisateur->verificationIdentite) {
                         $verif->delete();
                     }
                 }
 
-                // 11. SUPPRESSION DÉFINITIVE
                 $utilisateur->forceDelete();
             });
         } catch (\Throwable $e) {

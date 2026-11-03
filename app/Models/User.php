@@ -14,7 +14,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    // 👇 J'ai retiré le trait Notifiable qui causait l'erreur "notifiable_id"
+    // 👇 J'ai retiré le trait Notifiable qui générait 'notifiable_id'
     use HasApiTokens, HasFactory;
 
     public const ROLE_CLIENT = 'client';
@@ -162,7 +162,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Relation customisée pour pointer vers 'artisan_id' 
+     * 👇 Relation customisée qui pointe vers 'artisan_id'
      * (puisque la table notifications utilise cette colonne).
      */
     public function notifications(): HasMany
