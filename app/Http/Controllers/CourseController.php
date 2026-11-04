@@ -34,6 +34,7 @@ class CourseController extends Controller
             (float) $donnees['arrivee_longitude'],
             $donnees['type_vehicule'],
         );
+
         return response()->json($estimation);
     }
 
@@ -57,6 +58,7 @@ class CourseController extends Controller
     {
         $this->authorize('view', $course);
         $course->load(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'client']);
+
         return new CourseResource($course);
     }
 
@@ -163,6 +165,7 @@ class CourseController extends Controller
 
         $course->refresh();
         $this->notifierClient($course, 'Chauffeur trouvé', 'Votre chauffeur arrive.', important: true);
+
         return $this->reponse($course, 'Course acceptée.');
     }
 
@@ -248,6 +251,7 @@ class CourseController extends Controller
 
         if ($occupe) {
             $this->rouvrir($course, $chauffeur);
+
             return response()->json([
                 'message' => 'Ce chauffeur n’est plus disponible. Nous cherchons un autre chauffeur.',
                 'course' => new CourseResource($course->fresh(['client'])),
@@ -314,6 +318,7 @@ class CourseController extends Controller
             return response()->json(['message' => 'Cette course n’est pas au bon stade.'], 422);
         }
         $course->update(['statut' => Course::STATUT_EN_ROUTE]);
+
         return $this->reponse($course, 'En route vers le client.');
     }
 
@@ -327,6 +332,7 @@ class CourseController extends Controller
             'statut' => Course::STATUT_PRISE_EN_CHARGE,
             'prise_en_charge_at' => now(),
         ]);
+
         return $this->reponse($course, 'Client à bord.');
     }
 
@@ -347,6 +353,7 @@ class CourseController extends Controller
         $this->appariement->libererChauffeur($course);
         $course->chauffeur?->increment('nb_courses_terminees');
         $this->notifierClient($course, 'Course terminée', 'Merci d’avoir voyagé avec Maboko.');
+
         return $this->reponse($course, 'Course terminée.');
     }
 
@@ -366,6 +373,7 @@ class CourseController extends Controller
         if (! $parLeClient) {
             $this->notifierClient($course, 'Course annulée', 'Votre chauffeur a annulé la course.', important: true);
         }
+
         return $this->reponse($course, 'Course annulée.');
     }
 
@@ -385,6 +393,7 @@ class CourseController extends Controller
                 important: true,
             );
         }
+
         return $candidats->count();
     }
 
@@ -418,6 +427,7 @@ class CourseController extends Controller
     {
         $course = $course->fresh(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'client']);
         CourseMiseAJour::dispatch($course);
+
         return response()->json([
             'message' => $message,
             'course' => new CourseResource($course),
@@ -430,6 +440,7 @@ class CourseController extends Controller
         $dLat = deg2rad($lat2 - $lat1);
         $dLon = deg2rad($lon2 - $lon1);
         $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+
         return round($rayonTerre * 2 * atan2(sqrt($a), sqrt(1 - $a)), 1);
     }
 

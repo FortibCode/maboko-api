@@ -22,8 +22,8 @@ use App\Http\Controllers\FavoriController;
 use App\Http\Controllers\InteractionController;
 use App\Http\Controllers\MetierController;
 use App\Http\Controllers\MissionController;
-use App\Http\Controllers\MuseeController;
 use App\Http\Controllers\MoyenPaiementController;
+use App\Http\Controllers\MuseeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\PaiementWebhookController;
@@ -118,7 +118,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses', [CourseController::class, 'store']);
         Route::get('/courses/{course}', [CourseController::class, 'show']);
         Route::post('/courses/{course}/annuler', [CourseController::class, 'annuler']);
-        
+
         // Réponse du client à la contre-proposition d'un chauffeur (§5.1.9)
         Route::post('/courses/{course}/accepter-prix', [CourseController::class, 'accepterPrix']);
         Route::post('/courses/{course}/refuser-prix', [CourseController::class, 'refuserPrix']);

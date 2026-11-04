@@ -11,7 +11,7 @@ class AppariementCourse
 {
     /** Délai au-delà duquel une course n'est plus proposée (15 minutes). */
     public const EXPIRATION_MINUTES = 15;
-    
+
     /** Rayon maximum pour proposer une course à un chauffeur (en km). */
     public const RAYON_RECHERCHE_KM = 15;
 
@@ -39,7 +39,9 @@ class AppariementCourse
         // 2. On calcule la distance en PHP pour ne garder que ceux dans le rayon
         return $chauffeurs->filter(function (Chauffeur $chauffeur) use ($course) {
             $position = $chauffeur->dernierePosition;
-            if (!$position) return false;
+            if (! $position) {
+                return false;
+            }
 
             $distance = $this->calculerDistance(
                 (float) $position->latitude,

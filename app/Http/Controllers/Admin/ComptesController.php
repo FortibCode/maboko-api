@@ -279,8 +279,14 @@ class ComptesController extends Controller
                     DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
                 }
 
-                // 👇 On utilise la relation Eloquent qui pointe sur 'artisan_id'
-                $utilisateur->notifications()->delete();
+                // 👇 LA LIGNE CRUCIALE : On supprime avec du SQL pur (bypass total de Laravel)
+                if (Schema::hasTable('notifications')) {
+                    DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
+                    // Si jamais la colonne n'est pas artisan_id, on tente user_id
+                    if (Schema::hasColumn('notifications', 'user_id')) {
+                        DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
+                    }
+                }
 
                 if (method_exists($utilisateur, 'verificationIdentite')) {
                     if ($verif = $utilisateur->verificationIdentite) {
