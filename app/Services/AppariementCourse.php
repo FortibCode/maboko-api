@@ -5,110 +5,110 @@ namespace App\Services;
 use App\Models\Chauffeur;
 use App\Models\Course;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
-/**
- * Appariement d'une course avec un chauffeur (§4.3).
- *
- * La course est proposée aux chauffeurs disponibles les plus proches, du plus
- * près au plus loin. Le premier qui accepte l'emporte : l'attribution se joue
- * sur une mise à jour conditionnelle, pour que deux acceptations simultanées
- * ne donnent pas la même course à deux chauffeurs.
- */
 class AppariementCourse
 {
-    /** Rayon de recherche initial, en kilomètres. */
-    public const RAYON_KM = 5;
+    /** Délai au-delà duquel une course n'est plus proposée (15 minutes). */
+    public const EXPIRATION_MINUTES = 15;
 
-    /** Rayon élargi si personne n'est trouvé à proximité. */
-    public const RAYON_ELARGI_KM = 12;
-
-    /** Au-delà, une course sans preneur est abandonnée. */
-    public const EXPIRATION_MINUTES = 10;
+    /** Rayon maximum pour proposer une course à un chauffeur (en km). */
+    public const RAYON_RECHERCHE_KM = 15;
 
     /**
-     * Chauffeurs joignables pour cette course, triés par distance.
-     *
-     * @return Collection<int, Chauffeur>
+     * Trouve les chauffeurs les plus pertinents pour une course donnée.
      */
-    public function candidats(Course $course, int $limite = 10): Collection
+    public function candidats(Course $course): Collection
     {
-        $trouves = $this->chercher($course, self::RAYON_KM, $limite);
+        // ⏱️ On définit la limite de fraicheur du GPS (5 minutes)
+        $positionRecenteMin = now()->subMinutes(5);
 
-        // Personne à proximité : on élargit plutôt que de laisser le client
-        // sans réponse, quitte à allonger son attente.
-        if ($trouves->isEmpty()) {
-            $trouves = $this->chercher($course, self::RAYON_ELARGI_KM, $limite);
-        }
+        // 1. On filtre les chauffeurs en base de données
+        $chauffeurs = Chauffeur::query()
+            ->where('en_ligne', true)
+            ->where('disponibilite', true)
+            ->where('statut_validation', Chauffeur::VALIDATION_VALIDE)
+            ->where('type_vehicule', $course->type_vehicule)
+            ->whereHas('dernierePosition', function ($query) use ($positionRecenteMin) {
+                // 👇 On ignore ceux qui n'ont pas envoyé de GPS depuis 5 min
+                $query->where('releve_at', '>=', $positionRecenteMin);
+            })
+            ->with('dernierePosition')
+            ->get();
 
-        return $trouves;
+        // 2. On calcule la distance en PHP pour ne garder que ceux dans le rayon
+        return $chauffeurs->filter(function (Chauffeur $chauffeur) use ($course) {
+            $position = $chauffeur->dernierePosition;
+            if (! $position) {
+                return false;
+            }
+
+            $distance = $this->calculerDistance(
+                (float) $position->latitude,
+                (float) $position->longitude,
+                (float) $course->depart_latitude,
+                (float) $course->depart_longitude
+            );
+
+            // On garde le chauffeur seulement s'il est dans le rayon
+            return $distance <= self::RAYON_RECHERCHE_KM;
+        });
     }
 
     /**
-     * Attribue la course au chauffeur, si elle est encore libre.
-     *
-     * Retourne false lorsqu'un autre chauffeur a été plus rapide : c'est le
-     * cas normal en heure de pointe, pas une erreur.
+     * Attribue une course à un chauffeur de manière atomique.
+     * Empêche deux chauffeurs d'accepter la même course en même temps.
      */
     public function attribuer(Course $course, Chauffeur $chauffeur): bool
     {
-        $attribuee = Course::whereKey($course->id)
-            ->where('statut', Course::STATUT_RECHERCHE)
-            ->whereNull('chauffeur_id')
-            ->update([
+        // On utilise une transaction pour verrouiller la ligne de la course
+        return DB::transaction(function () use ($course, $chauffeur) {
+            // On vérifie que la course est toujours disponible
+            $courseVerrouillee = Course::where('id', $course->id)
+                ->where('statut', Course::STATUT_RECHERCHE)
+                ->lockForUpdate() // 🔒 Empêche les conflits
+                ->first();
+
+            if (! $courseVerrouillee) {
+                return false; // Un autre chauffeur a été plus rapide
+            }
+
+            // On attribue la course
+            $courseVerrouillee->update([
                 'chauffeur_id' => $chauffeur->id,
                 'statut' => Course::STATUT_ACCEPTEE,
-                'acceptee_at' => now(),
             ]);
 
-        if ($attribuee === 0) {
-            return false;
-        }
+            // On rend le chauffeur indisponible
+            $chauffeur->update(['disponibilite' => false]);
 
-        // Le chauffeur n'est plus proposable tant qu'il n'a pas déposé.
-        $chauffeur->update(['disponibilite' => false]);
-
-        return true;
-    }
-
-    /** Rend le chauffeur disponible en fin de course ou après annulation. */
-    public function libererChauffeur(Course $course): void
-    {
-        $course->chauffeur?->update(['disponibilite' => true]);
+            return true;
+        });
     }
 
     /**
-     * @return Collection<int, Chauffeur>
+     * Libère le chauffeur après la fin ou l'annulation de la course.
      */
-    private function chercher(Course $course, int $rayonKm, int $limite): Collection
+    public function libererChauffeur(Course $course): void
     {
-        $lat = (float) $course->depart_latitude;
-        $lng = (float) $course->depart_longitude;
+        if ($course->chauffeur) {
+            $course->chauffeur->update(['disponibilite' => true]);
+        }
+    }
 
-        // Haversine exprimée en SQL, portable PostgreSQL / MySQL / SQLite.
-        // Un index géographique Redis serait plus rapide à grande échelle ;
-        // à quelques centaines de chauffeurs, cette requête suffit.
-        $distance = '(6371 * acos(cos(radians(?)) * cos(radians(p.latitude))'
-            .' * cos(radians(p.longitude) - radians(?))'
-            .' + sin(radians(?)) * sin(radians(p.latitude))))';
+    /**
+     * Formule de Haversine pour calculer la distance entre deux points GPS.
+     */
+    private function calculerDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $rayonTerre = 6371.0; // en km
 
-        return Chauffeur::query()
-            // L'appelant notifie chaque candidat : sans ce chargement, dix
-            // chauffeurs proches produiraient dix requêtes supplémentaires.
-            ->with('utilisateur:id,nom,prenom,telephone,role')
-            ->disponibles()
-            ->where('type_vehicule', $course->type_vehicule)
-            ->join('positions_chauffeurs as p', function ($jointure) {
-                // Seule la dernière position de chaque chauffeur compte.
-                $jointure->on('p.chauffeur_id', '=', 'chauffeurs.id')
-                    ->whereRaw('p.id = (select max(id) from positions_chauffeurs where chauffeur_id = chauffeurs.id)');
-            })
-            // Une position trop ancienne ne prouve plus rien : le chauffeur
-            // a pu éteindre son téléphone sans se déclarer hors ligne.
-            ->where('p.releve_at', '>=', now()->subMinutes(5))
-            ->selectRaw("chauffeurs.*, {$distance} as distance_km", [$lat, $lng, $lat])
-            ->whereRaw("{$distance} <= ?", [$lat, $lng, $lat, $rayonKm])
-            ->orderBy('distance_km')
-            ->limit($limite)
-            ->get();
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+
+        return round($rayonTerre * 2 * atan2(sqrt($a), sqrt(1 - $a)), 1);
     }
 }
