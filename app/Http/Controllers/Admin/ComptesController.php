@@ -76,6 +76,7 @@ class ComptesController extends Controller
 
         return response()->json($requete->paginate(25)->through(function (User $u) {
             $fiche = $u->artisan;
+
             return [
                 'id' => $fiche?->id,
                 'utilisateurId' => $u->id,
@@ -298,6 +299,7 @@ class ComptesController extends Controller
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
+
             return response()->json([
                 'message' => 'Suppression impossible : '.$e->getMessage(),
             ], 500);
@@ -327,6 +329,7 @@ class ComptesController extends Controller
         if ($request->boolean('retirer')) {
             $this->badges->retirer($artisan, $badge);
             $this->journal->enregistrer('badge.retire', $artisan, [], ['badge' => $badge->slug]);
+
             return response()->json(['message' => 'Badge retiré.']);
         }
 
