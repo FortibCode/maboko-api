@@ -5,15 +5,21 @@ namespace App\Http\Controllers;
 use App\Models\Chauffeur;
 use App\Models\Course;
 use App\Models\PositionChauffeur;
+use App\Models\User;
+use App\Models\VerificationIdentite;
+use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 /**
  * Espace du chauffeur (§5.3) : fiche, disponibilité, position et revenus.
  */
 class ChauffeurController extends Controller
 {
+    public function __construct(private MediaService $media) {}
+
     /** Fiche et état du chauffeur connecté. */
     public function moi(Request $request): JsonResponse
     {
@@ -173,7 +179,24 @@ class ChauffeurController extends Controller
             ],
             'permis_categories' => ['nullable', 'string', 'max:50'],
             'est_climatise' => ['sometimes', 'boolean'],
+            'photo_recto' => ['required_with:photo_verso', 'string'],
+            'photo_verso' => ['required_with:photo_recto', 'string'],
         ]);
+
+        // Déposées avant la fiche : une photo illisible ne doit pas laisser une
+        // fiche enregistrée sans sa pièce d'identité.
+        if (isset($donnees['photo_recto'])) {
+            try {
+                $this->deposerPieceIdentite($utilisateur, $donnees['photo_recto'], $donnees['photo_verso']);
+            } catch (RuntimeException $e) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors' => ['photo_recto' => [$e->getMessage()]],
+                ], 422);
+            }
+        }
+
+        unset($donnees['photo_recto'], $donnees['photo_verso']);
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
         $donnees['valide_at'] = null;
@@ -206,6 +229,32 @@ class ChauffeurController extends Controller
             'noteMoyenne' => (float) $chauffeur->note_moyenne,
             'nbCoursesTerminees' => $chauffeur->nb_courses_terminees,
         ], $existante ? 200 : 201);
+    }
+
+    /**
+     * La pièce rejoint le circuit de vérification d'identité (§4.5) : stockée
+     * chiffrée, et montrée à l'administration seule, par lien signé.
+     *
+     * Une pièce en cours d'examen ou déjà validée reste valable : renvoyer la
+     * fiche pour changer de véhicule ne relance pas la vérification d'identité.
+     */
+    private function deposerPieceIdentite(User $utilisateur, string $recto, string $verso): void
+    {
+        $dejaDeposee = VerificationIdentite::where('user_id', $utilisateur->id)
+            ->whereIn('statut', ['en_attente', 'valide'])
+            ->exists();
+
+        if ($dejaDeposee) {
+            return;
+        }
+
+        VerificationIdentite::create([
+            'user_id' => $utilisateur->id,
+            'type_piece' => 'cni',
+            'statut' => 'en_attente',
+            'chemin_recto' => $this->media->enregistrerPiecePrivee($recto, 'identites'),
+            'chemin_verso' => $this->media->enregistrerPiecePrivee($verso, 'identites'),
+        ]);
     }
 
     private function fiche(Request $request): ?Chauffeur

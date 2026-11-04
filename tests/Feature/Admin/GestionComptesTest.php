@@ -6,6 +6,7 @@ use App\Models\Artisan;
 use App\Models\AuditLog;
 use App\Models\Chauffeur;
 use App\Models\DemandeDevis;
+use App\Models\Notification;
 use App\Models\Story;
 use App\Models\User;
 use Database\Seeders\BadgeSeeder;
@@ -224,8 +225,11 @@ class GestionComptesTest extends TestCase
             'expire_at' => now()->addDay(),
         ]);
         DemandeDevis::factory()->create(['client_id' => $client->id, 'artisan_id' => $artisan->id]);
+        Notification::create(['artisan_id' => $compte->id, 'title' => 'Bienvenue', 'body' => 'Bonjour']);
 
         $this->deleteJson("/api/v1/admin/utilisateurs/{$compte->id}")->assertOk();
+
+        $this->assertDatabaseCount('notifications', 0);
 
         $this->assertDatabaseMissing('users', ['id' => $compte->id]);
         $this->assertDatabaseMissing('artisans', ['id' => $artisan->id]);
