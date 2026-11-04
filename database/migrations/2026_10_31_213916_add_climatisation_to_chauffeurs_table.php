@@ -9,7 +9,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chauffeurs', function (Blueprint $table) {
-            // On vérifie si la colonne n'existe pas déjà
             if (!Schema::hasColumn('chauffeurs', 'est_climatise')) {
                 $table->boolean('est_climatise')->default(false)->after('type_vehicule');
             }

@@ -9,23 +9,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-/**
- * @property int $id
- * @property int $utilisateur_id
- * @property string $type_vehicule
- * @property bool $est_climatise
- * @property string|null $photo_recto
- * @property string|null $photo_verso
- * @property string $vehicule_modele
- * @property string $plaque_immatriculation
- * @property string $permis_conduire
- * @property string|null $permis_categories
- * @property bool $en_ligne
- * @property bool $disponibilite
- * @property string $statut_validation
- * @property int $nb_courses_terminees
- * @property-read User $utilisateur
- */
 class Chauffeur extends Model
 {
     use HasFactory;
@@ -48,8 +31,8 @@ class Chauffeur extends Model
         'disponibilite',
         'type_vehicule',
         'est_climatise',
-        'photo_recto', // 👈 AJOUT
-        'photo_verso', // 👈 AJOUT
+        'photo_recto',
+        'photo_verso',
         'note_moyenne',
         'nb_courses_terminees',
         'statut_validation',

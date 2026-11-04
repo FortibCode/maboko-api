@@ -4,41 +4,39 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Négociation du prix d'une course (§5.1.9) et véhicule climatisé.
- *
- * Le client peut proposer son prix, un chauffeur peut en proposer un autre ;
- * chauffeur_propose_id retient qui a fait l'offre, pour lui attribuer la
- * course si le client l'accepte.
- */
 return new class extends Migration
 {
     public function up(): void
     {
         Schema::table('courses', function (Blueprint $table) {
-            $table->decimal('prix_client', 10, 2)->nullable()->after('tarif_final');
-            $table->decimal('prix_chauffeur', 10, 2)->nullable()->after('prix_client');
-            $table->foreignId('chauffeur_propose_id')
-                ->nullable()
-                ->after('chauffeur_id')
-                ->constrained('chauffeurs')
-                ->nullOnDelete();
-        });
-
-        Schema::table('chauffeurs', function (Blueprint $table) {
-            $table->boolean('est_climatise')->default(false)->after('vehicule_modele');
+            if (!Schema::hasColumn('courses', 'prix_client')) {
+                $table->decimal('prix_client', 10, 2)->nullable();
+            }
+            if (!Schema::hasColumn('courses', 'prix_chauffeur')) {
+                $table->decimal('prix_chauffeur', 10, 2)->nullable();
+            }
+            if (!Schema::hasColumn('courses', 'chauffeur_propose_id')) {
+                $table->foreignId('chauffeur_propose_id')->nullable()->constrained('chauffeurs')->nullOnDelete();
+            }
+            if (!Schema::hasColumn('courses', 'statut')) {
+                $table->string('statut')->default('en_attente');
+            }
+            if (!Schema::hasColumn('courses', 'depart_lat')) {
+                $table->decimal('depart_lat', 10, 7)->nullable();
+                $table->decimal('depart_lng', 10, 7)->nullable();
+                $table->decimal('arrivee_lat', 10, 7)->nullable();
+                $table->decimal('arrivee_lng', 10, 7)->nullable();
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('courses', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('chauffeur_propose_id');
-            $table->dropColumn(['prix_client', 'prix_chauffeur']);
-        });
-
-        Schema::table('chauffeurs', function (Blueprint $table) {
-            $table->dropColumn('est_climatise');
+            $table->dropColumn([
+                'prix_client', 'prix_chauffeur', 'chauffeur_propose_id',
+                'statut', 'depart_lat', 'depart_lng', 'arrivee_lat', 'arrivee_lng'
+            ]);
         });
     }
 };

@@ -11,14 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
-/**
- * Espace du chauffeur (§5.3) : fiche, disponibilité, position et revenus.
- */
 class ChauffeurController extends Controller
 {
-    public function __construct(private MediaService $media) {} // 👈 INJECTION
+    public function __construct(private MediaService $media) {}
 
-    /** Fiche et état du chauffeur connecté. */
     public function moi(Request $request): JsonResponse
     {
         $chauffeur = $this->fiche($request);
@@ -133,7 +129,7 @@ class ChauffeurController extends Controller
 
         return response()->json([
             'aujourdhui' => (float) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->sum('tarif_final'),
-            'coursesAujourdhui' => (float) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
+            'coursesAujourdhui' => (int) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
             'semaine' => $semaine->values(),
             'totalSemaine' => (float) $semaine->sum('total'),
             'total' => (float) (clone $terminees)->sum('tarif_final'),
@@ -141,16 +137,13 @@ class ChauffeurController extends Controller
         ]);
     }
 
-    /**
-     * Depot de la fiche vehicule par le chauffeur lui-meme (§5.3.1).
-     */
     public function enregistrerFiche(Request $request): JsonResponse
     {
         $utilisateur = $request->user();
 
         if (! $utilisateur->estChauffeur()) {
             return response()->json([
-                'message' => 'Seul un compte chauffeur peut deposer une fiche vehicule.',
+                'message' => 'Seul un compte chauffeur peut déposer une fiche véhicule.',
             ], 403);
         }
 
@@ -169,26 +162,24 @@ class ChauffeurController extends Controller
             ],
             'permis_categories' => ['nullable', 'string', 'max:50'],
             'est_climatise' => ['sometimes', 'boolean'],
-            'photo_recto' => ['sometimes', 'string'], // 👈 AJOUT
-            'photo_verso' => ['sometimes', 'string'], // 👈 AJOUT
+            'photo_recto' => ['sometimes', 'string'],
+            'photo_verso' => ['sometimes', 'string'],
         ]);
 
-        // 👇 GESTION DES PHOTOS 👇
-        if (!empty($donnees['photo_recto'])) {
+        if (! empty($donnees['photo_recto'])) {
             try {
                 $donnees['photo_recto'] = $this->media->enregistrerImage($donnees['photo_recto'], 'identites_chauffeurs');
             } catch (RuntimeException $e) {
-                return response()->json(['message' => 'Erreur photo recto : ' . $e->getMessage()], 422);
+                return response()->json(['message' => 'Erreur photo recto : '.$e->getMessage()], 422);
             }
         }
-        if (!empty($donnees['photo_verso'])) {
+        if (! empty($donnees['photo_verso'])) {
             try {
                 $donnees['photo_verso'] = $this->media->enregistrerImage($donnees['photo_verso'], 'identites_chauffeurs');
             } catch (RuntimeException $e) {
-                return response()->json(['message' => 'Erreur photo verso : ' . $e->getMessage()], 422);
+                return response()->json(['message' => 'Erreur photo verso : '.$e->getMessage()], 422);
             }
         }
-        // 👆 FIN GESTION 👆
 
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
         $donnees['valide_at'] = null;
@@ -206,7 +197,7 @@ class ChauffeurController extends Controller
         }
 
         return response()->json([
-            'message' => 'Fiche enregistree. Elle sera examinee par l\'equipe Maboko.',
+            'message' => 'Fiche enregistrée. Elle sera examinée par l\'équipe Maboko.',
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
