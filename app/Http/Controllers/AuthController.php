@@ -133,7 +133,7 @@ class AuthController extends Controller
         $request->validate([
             'telephone' => 'required|string',
             'reset_token' => 'required|string',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => 'required|string|confirmed',
         ]);
 
         $otp = $this->otp->consommerJetonReinitialisation($request->telephone, $request->reset_token);

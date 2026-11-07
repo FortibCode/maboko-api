@@ -42,7 +42,7 @@ class CourseController extends Controller
     {
         $utilisateur = $request->user();
         $requete = Course::query()
-            ->with(['chauffeur.utilisateur:id,nom,prenom,avatar_url,telephone', 'client:id,nom,prenom,avatar_url,role'])
+            ->with(['chauffeur.utilisateur:id,nom,prenom,avatar_url,telephone', 'chauffeurPropose.utilisateur:id,nom,prenom,avatar_url,telephone', 'client:id,nom,prenom,avatar_url,role'])
             ->latest();
 
         if ($utilisateur->estChauffeur()) {
@@ -57,7 +57,7 @@ class CourseController extends Controller
     public function show(Request $request, Course $course): CourseResource
     {
         $this->authorize('view', $course);
-        $course->load(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'client']);
+        $course->load(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'chauffeurPropose.utilisateur', 'chauffeurPropose.dernierePosition', 'client']);
 
         return new CourseResource($course);
     }
@@ -124,13 +124,19 @@ class CourseController extends Controller
         }
 
         $courses = Course::query()
-            ->whereIn('statut', [Course::STATUT_RECHERCHE, Course::STATUT_NEGOCIATION])
-            ->where('type_vehicule', $chauffeur->type_vehicule)
+            ->where(function ($query) use ($chauffeur) {
+                $query->where('statut', Course::STATUT_RECHERCHE)
+                    ->orWhere(function ($q) use ($chauffeur) {
+                        $q->where('statut', Course::STATUT_NEGOCIATION)
+                            ->where('chauffeur_propose_id', $chauffeur->id);
+                    });
+            })
+            ->when($chauffeur->type_vehicule, fn ($q) => $q->where('type_vehicule', $chauffeur->type_vehicule))
             ->where('created_at', '>=', now()->subMinutes(AppariementCourse::EXPIRATION_MINUTES))
             ->whereNotIn('id', RefusCourse::where('chauffeur_id', $chauffeur->id)->select('course_id'))
-            ->with('client:id,nom,prenom,avatar_url,role')
+            ->with(['client:id,nom,prenom,avatar_url,role', 'chauffeurPropose.utilisateur'])
             ->latest()
-            ->limit(10)
+            ->limit(20)
             ->get();
 
         $position = $chauffeur->dernierePosition;
@@ -165,6 +171,7 @@ class CourseController extends Controller
 
         $course->refresh();
         $this->notifierClient($course, 'Chauffeur trouvé', 'Votre chauffeur arrive.', important: true);
+        $this->notifierAutresChauffeursCoursePrise($course, $chauffeur->id);
 
         return $this->reponse($course, 'Course acceptée.');
     }
@@ -228,6 +235,9 @@ class CourseController extends Controller
             number_format((float) $course->prix_chauffeur, 0, ',', ' ').' FCFA pour votre course. Acceptez ou refusez.',
             important: true,
         );
+
+        // Les autres chauffeurs sont informés que la course a été prise
+        $this->notifierAutresChauffeursCoursePrise($course, $chauffeur->id);
 
         return $this->reponse($course, 'Proposition envoyée au client.');
     }
@@ -308,6 +318,9 @@ class CourseController extends Controller
             donnees: ['course_id' => $course->id],
         );
 
+        // Reproposer la course aux autres chauffeurs
+        $this->proposerAuxChauffeurs($course);
+
         return $this->reponse($course, 'Proposition refusée. Nous cherchons un autre chauffeur.');
     }
 
@@ -383,18 +396,43 @@ class CourseController extends Controller
     {
         $candidats = $this->appariement->candidats($course);
         foreach ($candidats as $chauffeur) {
-            $this->notifications->notifier(
-                $chauffeur->utilisateur,
-                'Nouvelle course disponible',
-                $course->lieu_depart.' → '.$course->lieu_arrivee
-                    .' · '.number_format($course->tarifConvenu(), 0, ',', ' ').' FCFA',
-                type: 'course_proposee',
-                donnees: ['course_id' => $course->id],
-                important: true,
-            );
+            if ($chauffeur->utilisateur) {
+                $this->notifications->notifier(
+                    $chauffeur->utilisateur,
+                    'Nouvelle course disponible',
+                    $course->lieu_depart.' → '.$course->lieu_arrivee
+                        .' · '.number_format($course->tarifConvenu(), 0, ',', ' ').' FCFA',
+                    type: 'course_proposee',
+                    donnees: ['course_id' => $course->id],
+                    important: true,
+                );
+            }
         }
 
         return $candidats->count();
+    }
+
+    private function notifierAutresChauffeursCoursePrise(Course $course, int $chauffeurExcluId): void
+    {
+        $autresChauffeurs = Chauffeur::query()
+            ->where('en_ligne', true)
+            ->where('statut_validation', Chauffeur::VALIDATION_VALIDE)
+            ->when($course->type_vehicule, fn ($q) => $q->where('type_vehicule', $course->type_vehicule))
+            ->where('id', '!=', $chauffeurExcluId)
+            ->with('utilisateur')
+            ->get();
+
+        foreach ($autresChauffeurs as $autre) {
+            if ($autre->utilisateur) {
+                $this->notifications->notifier(
+                    $autre->utilisateur,
+                    'Course prise',
+                    'La course vers '.$course->lieu_arrivee.' a été prise par un autre chauffeur.',
+                    type: 'course_prise',
+                    donnees: ['course_id' => $course->id],
+                );
+            }
+        }
     }
 
     private function rouvrir(Course $course, Chauffeur $chauffeur): void
@@ -425,7 +463,7 @@ class CourseController extends Controller
 
     private function reponse(Course $course, string $message): JsonResponse
     {
-        $course = $course->fresh(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'client']);
+        $course = $course->fresh(['chauffeur.utilisateur', 'chauffeur.dernierePosition', 'chauffeurPropose.utilisateur', 'chauffeurPropose.dernierePosition', 'client']);
         CourseMiseAJour::dispatch($course);
 
         return response()->json([

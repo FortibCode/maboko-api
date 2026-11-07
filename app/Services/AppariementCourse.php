@@ -17,42 +17,17 @@ class AppariementCourse
 
     /**
      * Trouve les chauffeurs les plus pertinents pour une course donnée.
+     * Les demandes sont visibles par tous les chauffeurs en ligne de la plateforme.
      */
     public function candidats(Course $course): Collection
     {
-        // ⏱️ On définit la limite de fraicheur du GPS (5 minutes)
-        $positionRecenteMin = now()->subMinutes(5);
-
-        // 1. On filtre les chauffeurs en base de données
-        $chauffeurs = Chauffeur::query()
+        return Chauffeur::query()
             ->where('en_ligne', true)
             ->where('disponibilite', true)
             ->where('statut_validation', Chauffeur::VALIDATION_VALIDE)
-            ->where('type_vehicule', $course->type_vehicule)
-            ->whereHas('dernierePosition', function ($query) use ($positionRecenteMin) {
-                // 👇 On ignore ceux qui n'ont pas envoyé de GPS depuis 5 min
-                $query->where('releve_at', '>=', $positionRecenteMin);
-            })
-            ->with('dernierePosition')
+            ->when($course->type_vehicule, fn ($q) => $q->where('type_vehicule', $course->type_vehicule))
+            ->with(['utilisateur', 'dernierePosition'])
             ->get();
-
-        // 2. On calcule la distance en PHP pour ne garder que ceux dans le rayon
-        return $chauffeurs->filter(function (Chauffeur $chauffeur) use ($course) {
-            $position = $chauffeur->dernierePosition;
-            if (! $position) {
-                return false;
-            }
-
-            $distance = $this->calculerDistance(
-                (float) $position->latitude,
-                (float) $position->longitude,
-                (float) $course->depart_latitude,
-                (float) $course->depart_longitude
-            );
-
-            // On garde le chauffeur seulement s'il est dans le rayon
-            return $distance <= self::RAYON_RECHERCHE_KM;
-        });
     }
 
     /**
@@ -99,7 +74,7 @@ class AppariementCourse
     /**
      * Formule de Haversine pour calculer la distance entre deux points GPS.
      */
-    private function calculerDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
+    public function calculerDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
     {
         $rayonTerre = 6371.0; // en km
 

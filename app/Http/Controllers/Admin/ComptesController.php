@@ -196,11 +196,13 @@ class ComptesController extends Controller
 
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        $utilisateur = User::find($utilisateurId);
+        $utilisateur = User::where('id', $utilisateurId)
+            ->orWhere('telephone', $utilisateurId)
+            ->first();
 
         if (! $utilisateur) {
             return response()->json([
-                'message' => 'Cet utilisateur a déjà été supprimé.',
+                'message' => 'Cet utilisateur a déjà été supprimé ou est introuvable.',
             ], 200);
         }
 
@@ -217,9 +219,11 @@ class ComptesController extends Controller
         }
 
         $identite = trim(($utilisateur->prenom ?? '').' '.$utilisateur->nom);
+        $role = $utilisateur->role;
+        $telephone = $utilisateur->telephone;
 
         try {
-            DB::transaction(function () use ($utilisateur) {
+            DB::transaction(function () use ($utilisateur, $telephone) {
                 $utilisateur->tokens()->delete();
 
                 if ($artisan = $utilisateur->artisan) {
@@ -253,6 +257,38 @@ class ComptesController extends Controller
                     $utilisateur->otpCodes()->delete();
                 }
 
+                if (Schema::hasTable('appareils')) {
+                    DB::table('appareils')->where('user_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('moyens_paiement')) {
+                    DB::table('moyens_paiement')->where('user_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('audit_logs')) {
+                    DB::table('audit_logs')->where('utilisateur_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('reports')) {
+                    DB::table('reports')->where('signaleur_id', $utilisateur->id)->orWhere('signale_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('otp_codes')) {
+                    DB::table('otp_codes')->where('user_id', $utilisateur->id)->orWhere('telephone', $telephone)->delete();
+                }
+
+                if (Schema::hasTable('refus_courses')) {
+                    DB::table('refus_courses')->where('chauffeur_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('courses')) {
+                    DB::table('courses')
+                        ->where('utilisateur_id', $utilisateur->id)
+                        ->orWhere('chauffeur_id', $utilisateur->id)
+                        ->orWhere('chauffeur_propose_id', $utilisateur->id)
+                        ->delete();
+                }
+
                 if (Schema::hasTable('follows')) {
                     DB::table('follows')
                         ->where('follower_id', $utilisateur->id)
@@ -280,10 +316,8 @@ class ComptesController extends Controller
                     DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
                 }
 
-                // 👇 LA LIGNE CRUCIALE : On supprime avec du SQL pur (bypass total de Laravel)
                 if (Schema::hasTable('notifications')) {
                     DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
-                    // Si jamais la colonne n'est pas artisan_id, on tente user_id
                     if (Schema::hasColumn('notifications', 'user_id')) {
                         DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
                     }
@@ -295,7 +329,15 @@ class ComptesController extends Controller
                     }
                 }
 
+                try {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                } catch (\Throwable) {}
+
                 $utilisateur->forceDelete();
+
+                try {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                } catch (\Throwable) {}
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
@@ -309,11 +351,11 @@ class ComptesController extends Controller
             'compte.supprime',
             null,
             [],
-            ['identite' => $identite, 'role' => $utilisateur->role],
+            ['identite' => $identite, 'role' => $role],
         );
 
         return response()->json([
-            'message' => 'Compte supprimé définitivement.',
+            'message' => 'Compte supprimé définitivement. Le numéro de téléphone et l\'e-mail sont libérés.',
         ]);
     }
 
