@@ -63,5 +63,14 @@ jobs:
           CACHE_STORE: array
         run: php artisan migrate:fresh --seed --force
 
+      # Sur PostgreSQL, comme en production : SQLite accepte une colonne qui
+      # n'existe pas, et la suppression de compte a ainsi cassé sans alerte.
       - name: Tests
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: maboko_test
+          DB_USERNAME: maboko
+          DB_PASSWORD: maboko
         run: php artisan test

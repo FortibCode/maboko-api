@@ -81,3 +81,4 @@ class Chauffeur extends Model
             ->where('statut_validation', self::VALIDATION_VALIDE);
     }
 }
+

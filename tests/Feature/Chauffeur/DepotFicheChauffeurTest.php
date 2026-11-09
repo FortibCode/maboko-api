@@ -4,7 +4,10 @@ namespace Tests\Feature\Chauffeur;
 
 use App\Models\Chauffeur;
 use App\Models\User;
+use App\Models\VerificationIdentite;
+use App\Services\MediaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -17,6 +20,8 @@ use Tests\TestCase;
 class DepotFicheChauffeurTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
     private function chauffeurSansFiche(): User
     {
@@ -50,6 +55,63 @@ class DepotFicheChauffeurTest extends TestCase
             'plaque_immatriculation' => 'BZV-777-CG',
             'statut_validation' => Chauffeur::VALIDATION_EN_ATTENTE,
         ]);
+    }
+
+    public function test_la_piece_d_identite_rejoint_la_verification_chiffree(): void
+    {
+        Storage::fake('local');
+        $utilisateur = $this->chauffeurSansFiche();
+        Sanctum::actingAs($utilisateur);
+
+        $this->postJson('/api/v1/chauffeur', $this->fiche(['photo_recto' => self::PNG, 'photo_verso' => self::PNG]))
+            ->assertCreated()
+            ->assertJsonMissingPath('photo_recto');
+
+        $verification = VerificationIdentite::where('user_id', $utilisateur->id)->sole();
+
+        $this->assertSame('en_attente', $verification->statut);
+        $this->assertStringEndsWith('.chiffre', $verification->chemin_recto);
+        $this->assertStringEndsWith('.chiffre', $verification->chemin_verso);
+        $this->assertSame(
+            base64_decode(explode(',', self::PNG)[1], true),
+            app(MediaService::class)->lirePiecePrivee($verification->chemin_verso),
+        );
+    }
+
+    public function test_renvoyer_la_fiche_ne_relance_pas_la_verification(): void
+    {
+        Storage::fake('local');
+        $utilisateur = $this->chauffeurSansFiche();
+        Sanctum::actingAs($utilisateur);
+        $fiche = $this->fiche(['photo_recto' => self::PNG, 'photo_verso' => self::PNG]);
+
+        $this->postJson('/api/v1/chauffeur', $fiche)->assertCreated();
+        $this->postJson('/api/v1/chauffeur', $fiche)->assertOk();
+
+        $this->assertSame(1, VerificationIdentite::where('user_id', $utilisateur->id)->count());
+    }
+
+    public function test_une_photo_illisible_ne_cree_pas_de_fiche(): void
+    {
+        Storage::fake('local');
+        $utilisateur = $this->chauffeurSansFiche();
+        Sanctum::actingAs($utilisateur);
+
+        $this->postJson('/api/v1/chauffeur', $this->fiche(['photo_recto' => 'pas-une-image', 'photo_verso' => self::PNG]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('photo_recto');
+
+        $this->assertDatabaseMissing('chauffeurs', ['utilisateur_id' => $utilisateur->id]);
+        $this->assertDatabaseCount('verifications_identite', 0);
+    }
+
+    public function test_le_recto_seul_est_refuse(): void
+    {
+        Sanctum::actingAs($this->chauffeurSansFiche());
+
+        $this->postJson('/api/v1/chauffeur', $this->fiche(['photo_recto' => self::PNG]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('photo_verso');
     }
 
     public function test_le_chauffeur_declare_un_vehicule_climatise(): void

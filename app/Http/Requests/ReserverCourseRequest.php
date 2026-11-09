@@ -24,3 +24,4 @@ class ReserverCourseRequest extends FormRequest
         ];
     }
 }
+
