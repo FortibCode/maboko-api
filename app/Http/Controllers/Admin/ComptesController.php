@@ -19,9 +19,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Gestion des artisans, des chauffeurs et de l'ensemble des utilisateurs (§5.4.3).
- */
 class ComptesController extends Controller
 {
     public function __construct(
@@ -30,7 +27,6 @@ class ComptesController extends Controller
         private MoteurBadges $badges,
     ) {}
 
-    /** Annuaire global de tous les utilisateurs. */
     public function utilisateurs(Request $request): AnonymousResourceCollection
     {
         $utilisateurs = User::query()
@@ -51,9 +47,6 @@ class ComptesController extends Controller
         return UserAdminResource::collection($utilisateurs);
     }
 
-    /**
-     * Annuaire des artisans, filtrable.
-     */
     public function artisans(Request $request): JsonResponse
     {
         $requete = User::query()
@@ -63,7 +56,6 @@ class ComptesController extends Controller
             ])
             ->when($request->filled('statut'), function ($r) use ($request) {
                 $statut = (string) $request->string('statut');
-
                 if ($statut === 'sans_fiche') {
                     $r->doesntHave('artisan');
                 } else {
@@ -106,7 +98,6 @@ class ComptesController extends Controller
         }));
     }
 
-    /** Annuaire des chauffeurs. */
     public function chauffeurs(Request $request): AnonymousResourceCollection
     {
         $chauffeurs = Chauffeur::query()
@@ -118,7 +109,6 @@ class ComptesController extends Controller
         return ChauffeurAdminResource::collection($chauffeurs);
     }
 
-    /** Validation d'une inscription artisan ou chauffeur. */
     public function valider(Request $request, string $type, int $id): JsonResponse
     {
         $donnees = $request->validate([
@@ -137,7 +127,6 @@ class ComptesController extends Controller
         }
 
         $avant = $fiche->statut_validation;
-
         $fiche->update([
             'statut_validation' => $donnees['decision'],
             'valide_at' => $donnees['decision'] === 'valide' ? now() : null,
@@ -172,7 +161,6 @@ class ComptesController extends Controller
         ]);
     }
 
-    /** Suspension ou réactivation d'un compte. */
     public function basculerSuspension(Request $request, User $utilisateur): JsonResponse
     {
         $donnees = $request->validate([
@@ -206,19 +194,15 @@ class ComptesController extends Controller
         ]);
     }
 
-    /**
-     * Suppression définitive d'un compte.
-     * Utilise forceDelete() pour vraiment libérer le téléphone et l'email.
-     */
     public function supprimerUtilisateur(Request $request, $utilisateurId): JsonResponse
     {
-        // User n'utilise pas SoftDeletes : un compte supprimé n'est plus en
-        // base, et find() suffit à le constater.
-        $utilisateur = User::find($utilisateurId);
+        $utilisateur = User::where('id', $utilisateurId)
+            ->orWhere('telephone', $utilisateurId)
+            ->first();
 
         if (! $utilisateur) {
             return response()->json([
-                'message' => 'Cet utilisateur a déjà été supprimé.',
+                'message' => 'Cet utilisateur a déjà été supprimé ou est introuvable.',
             ], 200);
         }
 
@@ -235,39 +219,32 @@ class ComptesController extends Controller
         }
 
         $identite = trim(($utilisateur->prenom ?? '').' '.$utilisateur->nom);
+        $role = $utilisateur->role;
+        $telephone = $utilisateur->telephone;
 
         try {
-            DB::transaction(function () use ($utilisateur) {
-                // 1. Tokens
+            DB::transaction(function () use ($utilisateur, $telephone) {
                 $utilisateur->tokens()->delete();
 
-                // 2. Fiche artisan + dépendances
                 if ($artisan = $utilisateur->artisan) {
                     $artisan->metiers()->detach();
                     $artisan->badges()->detach();
                     $artisan->demandes()->delete();
                     $artisan->avis()->delete();
                     $artisan->abonnements()->delete();
-
-                    // Tables qui pourraient ne pas exister dans certaines bases
-                    // stories.artisan_id et posts.artisan_id désignent le compte
-                    // (users.id), pas la fiche artisan.
                     if (Schema::hasTable('stories')) {
                         DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
                     }
                     if (Schema::hasTable('posts')) {
                         DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
                     }
-
                     $artisan->delete();
                 }
 
-                // 3. Fiche chauffeur
                 if ($utilisateur->chauffeur) {
                     $utilisateur->chauffeur()->delete();
                 }
 
-                // 4. Données du client
                 $utilisateur->demandes()->delete();
                 $utilisateur->avisDeposes()->delete();
                 $utilisateur->favoris()->delete();
@@ -280,7 +257,38 @@ class ComptesController extends Controller
                     $utilisateur->otpCodes()->delete();
                 }
 
-                // 5. Follows (pivot)
+                if (Schema::hasTable('appareils')) {
+                    DB::table('appareils')->where('user_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('moyens_paiement')) {
+                    DB::table('moyens_paiement')->where('user_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('audit_logs')) {
+                    DB::table('audit_logs')->where('utilisateur_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('reports')) {
+                    DB::table('reports')->where('signaleur_id', $utilisateur->id)->orWhere('signale_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('otp_codes')) {
+                    DB::table('otp_codes')->where('user_id', $utilisateur->id)->orWhere('telephone', $telephone)->delete();
+                }
+
+                if (Schema::hasTable('refus_courses')) {
+                    DB::table('refus_courses')->where('chauffeur_id', $utilisateur->id)->delete();
+                }
+
+                if (Schema::hasTable('courses')) {
+                    DB::table('courses')
+                        ->where('utilisateur_id', $utilisateur->id)
+                        ->orWhere('chauffeur_id', $utilisateur->id)
+                        ->orWhere('chauffeur_propose_id', $utilisateur->id)
+                        ->delete();
+                }
+
                 if (Schema::hasTable('follows')) {
                     DB::table('follows')
                         ->where('follower_id', $utilisateur->id)
@@ -288,15 +296,12 @@ class ComptesController extends Controller
                         ->delete();
                 }
 
-                // 6. Messages (expéditeur)
-                if (Schema::hasTable('messages')) {
+                if (Schema::hasTable('messages') && Schema::hasColumn('messages', 'expediteur_id')) {
                     DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
                 }
 
-                // 7. Conversations (pivot participant)
                 if (Schema::hasTable('conversation_participants')) {
                     DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
-
                     if (Schema::hasTable('conversations')) {
                         DB::table('conversations')
                             ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
@@ -304,30 +309,43 @@ class ComptesController extends Controller
                     }
                 }
 
-                // 8. Likes et commentaires
-                if (Schema::hasTable('likes')) {
-                    DB::table('likes')->where('user_id', $utilisateur->id)->delete();
+                if (Schema::hasTable('likes') && Schema::hasColumn('likes', 'utilisateur_id')) {
+                    DB::table('likes')->where('utilisateur_id', $utilisateur->id)->delete();
                 }
-                if (Schema::hasTable('commentaires')) {
-                    DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
+                if (Schema::hasTable('commentaires') && Schema::hasColumn('commentaires', 'auteur_id')) {
+                    DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
                 }
 
+<<<<<<< HEAD
+                if (Schema::hasTable('notifications')) {
+                    DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
+                    if (Schema::hasColumn('notifications', 'user_id')) {
+                        DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
+                    }
+=======
                 // 9. Notifications : la table Maboko désigne le destinataire par
                 // artisan_id (users.id, quel que soit le rôle), pas par les
                 // colonnes notifiable_* de Laravel, qui n'existent pas ici.
                 if (Schema::hasTable('notifications')) {
                     DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
+>>>>>>> 43dc4654fa0e10e211e9e493b9a4e8d0785ee033
                 }
 
-                // 10. Vérification identité
                 if (method_exists($utilisateur, 'verificationIdentite')) {
                     if ($verif = $utilisateur->verificationIdentite) {
                         $verif->delete();
                     }
                 }
 
-                // 11. SUPPRESSION DÉFINITIVE (forceDelete libère le téléphone et l'email)
+                try {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                } catch (\Throwable) {}
+
                 $utilisateur->forceDelete();
+
+                try {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                } catch (\Throwable) {}
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
@@ -341,15 +359,14 @@ class ComptesController extends Controller
             'compte.supprime',
             null,
             [],
-            ['identite' => $identite, 'role' => $utilisateur->role],
+            ['identite' => $identite, 'role' => $role],
         );
 
         return response()->json([
-            'message' => 'Compte supprimé définitivement.',
+            'message' => 'Compte supprimé définitivement. Le numéro de téléphone et l\'e-mail sont libérés.',
         ]);
     }
 
-    /** Attribution manuelle d'un badge (§4.5). */
     public function attribuerBadge(Request $request, Artisan $artisan): JsonResponse
     {
         $donnees = $request->validate([

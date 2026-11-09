@@ -19,14 +19,14 @@ class OtpController extends Controller
      */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // Pas de nettoyage de comptes supprimés ici : User n'utilise pas
-        // SoftDeletes, un compte supprimé disparaît de la table et libère
-        // aussitôt son téléphone et son e-mail.
+        // ⚠️ Aucune règle de complexité sur le mot de passe : l'utilisateur
+        // est libre de choisir le mot de passe qu'il veut (pas de min, pas
+        // de mixedCase, pas de symbols). Seule la non-vacuité est exigée.
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/', 'unique:users,telephone'],
-            'password' => 'required|string|min:8',
+            'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
         ]);
 
@@ -65,7 +65,6 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
-        // Aucun compte artisan sans fiche : une fiche provisoire est créée
         if ($user->role === User::ROLE_ARTISAN) {
             $ville = $user->ville ?? 'Brazzaville';
 
@@ -141,10 +140,6 @@ class OtpController extends Controller
         ]);
     }
 
-    /**
-     * En développement sans passerelle SMS, le code peut être renvoyé dans la
-     * réponse. Le drapeau vaut false par défaut et doit le rester en production.
-     */
     private function reponseAvecCode(
         string $message,
         ?string $code,
