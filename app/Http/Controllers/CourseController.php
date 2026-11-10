@@ -236,7 +236,6 @@ class CourseController extends Controller
             important: true,
         );
 
-        // Les autres chauffeurs sont informés que la course a été prise
         $this->notifierAutresChauffeursCoursePrise($course, $chauffeur->id);
 
         return $this->reponse($course, 'Proposition envoyée au client.');
@@ -318,7 +317,6 @@ class CourseController extends Controller
             donnees: ['course_id' => $course->id],
         );
 
-        // Reproposer la course aux autres chauffeurs
         $this->proposerAuxChauffeurs($course);
 
         return $this->reponse($course, 'Proposition refusée. Nous cherchons un autre chauffeur.');
@@ -487,4 +485,3 @@ class CourseController extends Controller
         return Chauffeur::where('utilisateur_id', $request->user()->id)->first();
     }
 }
-
