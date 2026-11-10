@@ -13,22 +13,35 @@ class OtpController extends Controller
 {
     public function __construct(private OtpService $otp) {}
 
-    /**
-     * Inscription, étape 1 : le formulaire est mis en attente et un code
-     * est envoyé par SMS. Aucun compte n'est créé à ce stade.
-     */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // ⚠️ Aucune règle de complexité sur le mot de passe : l'utilisateur
-        // est libre de choisir le mot de passe qu'il veut (pas de min, pas
-        // de mixedCase, pas de symbols). Seule la non-vacuité est exigée.
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
-            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/', 'unique:users,telephone'],
+            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
             'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
         ]);
+
+        $role = $donnees['role'] ?? User::ROLE_CLIENT;
+        $telephone = $donnees['telephone'];
+
+        // 👇 NOUVELLE LOGIQUE : 3 comptes max pour les artisans
+        if ($role === User::ROLE_ARTISAN) {
+            $nombreComptes = User::where('telephone', $telephone)->count();
+            if ($nombreComptes >= 3) {
+                return response()->json([
+                    'message' => 'Ce numéro est déjà associé à 3 comptes artisans maximum.',
+                ], 422);
+            }
+        } else {
+            // Pour les clients, on garde l'unicité stricte
+            if (User::where('telephone', $telephone)->exists()) {
+                return response()->json([
+                    'message' => 'Ce numéro de téléphone est déjà utilisé par un compte.',
+                ], 422);
+            }
+        }
 
         $code = $this->otp->emettrePourInscription($donnees);
 
@@ -39,10 +52,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Inscription, étape 2 : le code est vérifié et le compte est créé
-     * à partir des données mises en attente à l'étape 1.
-     */
     public function verifyAndRegister(Request $request): JsonResponse
     {
         $request->validate([
@@ -92,9 +101,6 @@ class OtpController extends Controller
         ], 201);
     }
 
-    /**
-     * Mot de passe oublié, étape 1 : envoi du code.
-     */
     public function sendOtp(Request $request): JsonResponse
     {
         $request->validate([
@@ -116,10 +122,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Mot de passe oublié, étape 2 : la vérification du code remet un jeton
-     * à usage unique, seul sésame accepté ensuite par /reset-password.
-     */
     public function verifyOtp(Request $request): JsonResponse
     {
         $request->validate([
