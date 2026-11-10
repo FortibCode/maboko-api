@@ -13,6 +13,11 @@ echo "[maboko] preparation du conteneur"
 : "${PORT:=10000}"
 export PORT
 
+# Repertoire temporaire pour les requetes lourdes (photos en base64)
+mkdir -p /tmp/nginx_client_body /var/lib/nginx/tmp/client_body /var/log/nginx
+chown -R www-data:www-data /tmp/nginx_client_body /var/lib/nginx /var/log/nginx 2>/dev/null || true
+chmod -R 777 /tmp/nginx_client_body 2>/dev/null || true
+
 # Le port impose par la plateforme est injecte dans la configuration nginx.
 envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 echo "[maboko] nginx ecoutera sur le port ${PORT}"
