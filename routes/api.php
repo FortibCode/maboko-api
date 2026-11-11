@@ -42,20 +42,24 @@ Route::prefix('v1')->group(function () {
     /*
     | Routes publiques
     */
+    
+    // 👇 MODIFIÉ : throttle:60,1 pour éviter le blocage "Trop de tentatives" lors de tes tests
     Route::post('/send-register-otp', [OtpController::class, 'sendRegisterOtp'])
-        ->middleware('throttle:otp-envoi');
+        ->middleware('throttle:60,1');
     Route::post('/verify-register-otp', [OtpController::class, 'verifyAndRegister'])
-        ->middleware('throttle:otp-verif');
+        ->middleware('throttle:60,1');
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:connexion');
+        ->middleware('throttle:60,1');
     Route::post('/login/google', [AuthController::class, 'loginGoogle'])
-        ->middleware('throttle:connexion');
+        ->middleware('throttle:60,1');
     Route::post('/send-otp', [OtpController::class, 'sendOtp'])
-        ->middleware('throttle:otp-envoi');
+        ->middleware('throttle:60,1');
     Route::post('/verify-otp', [OtpController::class, 'verifyOtp'])
-        ->middleware('throttle:otp-verif');
+        ->middleware('throttle:60,1');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])
-        ->middleware('throttle:otp-verif');
+        ->middleware('throttle:60,1');
+    // 👆 FIN MODIFICATION
+
     Route::post('/webhooks/paiement/{operateur}', PaiementWebhookController::class)
         ->middleware('throttle:120,1');
 
@@ -260,4 +264,3 @@ Route::prefix('v1')->group(function () {
         Route::delete('/appareils', [AppareilController::class, 'retirer']);
     });
 });
-
