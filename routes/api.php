@@ -42,7 +42,7 @@ Route::prefix('v1')->group(function () {
     /*
     | Routes publiques
     */
-    
+
     // 👇 MODIFIÉ : throttle:60,1 pour éviter le blocage "Trop de tentatives" lors de tes tests
     Route::post('/send-register-otp', [OtpController::class, 'sendRegisterOtp'])
         ->middleware('throttle:60,1');
