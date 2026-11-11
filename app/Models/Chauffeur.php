@@ -9,20 +9,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-/**
- * @property int $id
- * @property int $utilisateur_id
- * @property string $type_vehicule
- * @property string $vehicule_modele
- * @property string $plaque_immatriculation
- * @property string $permis_conduire
- * @property string|null $permis_categories
- * @property bool $en_ligne
- * @property bool $disponibilite
- * @property string $statut_validation
- * @property int $nb_courses_terminees
- * @property-read User $utilisateur
- */
 class Chauffeur extends Model
 {
     use HasFactory;
@@ -44,10 +30,12 @@ class Chauffeur extends Model
         'permis_conduire',
         'permis_categories',
         'vehicule_modele',
-        'est_climatise',
         'plaque_immatriculation',
         'disponibilite',
         'type_vehicule',
+        'est_climatise',
+        'photo_recto',
+        'photo_verso',
         'note_moyenne',
         'nb_courses_terminees',
         'statut_validation',
@@ -83,13 +71,14 @@ class Chauffeur extends Model
 
     public function dernierePosition(): HasOne
     {
-        return $this->hasOne(PositionChauffeur::class)->latestOfMany('releve_at');
+        return $this->hasOne(PositionChauffeur::class)->latestOfMany();
     }
 
     public function scopeDisponibles(Builder $requete): Builder
     {
         return $requete->where('en_ligne', true)
             ->where('disponibilite', true)
-            ->where('statut_validation', Artisan::VALIDATION_VALIDE);
+            ->where('statut_validation', self::VALIDATION_VALIDE);
     }
 }
+
