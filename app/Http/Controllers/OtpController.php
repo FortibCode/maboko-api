@@ -18,7 +18,7 @@ class OtpController extends Controller
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
             // 👇 On retire "unique:users,email" pour autoriser les doublons
-            'email' => 'required|email|max:255', 
+            'email' => 'required|email|max:255',
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
             'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
@@ -32,7 +32,7 @@ class OtpController extends Controller
             // 👇 On vérifie que l'email ou le téléphone n'a pas déjà 3 comptes
             $comptesTel = User::where('telephone', $telephone)->count();
             $comptesEmail = User::where('email', $email)->count();
-            
+
             if ($comptesTel >= 3 || $comptesEmail >= 3) {
                 return response()->json([
                     'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes artisans maximum.',
