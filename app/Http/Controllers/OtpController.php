@@ -17,7 +17,8 @@ class OtpController extends Controller
     {
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
+            // 👇 On retire "unique:users,email" pour autoriser les doublons
+            'email' => 'required|email|max:255', 
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
             'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
@@ -25,13 +26,16 @@ class OtpController extends Controller
 
         $role = $donnees['role'] ?? User::ROLE_CLIENT;
         $telephone = $donnees['telephone'];
+        $email = $donnees['email'];
 
-        // 👇 NOUVELLE LOGIQUE : 3 comptes max pour les artisans
         if ($role === User::ROLE_ARTISAN) {
-            $nombreComptes = User::where('telephone', $telephone)->count();
-            if ($nombreComptes >= 3) {
+            // 👇 On vérifie que l'email ou le téléphone n'a pas déjà 3 comptes
+            $comptesTel = User::where('telephone', $telephone)->count();
+            $comptesEmail = User::where('email', $email)->count();
+            
+            if ($comptesTel >= 3 || $comptesEmail >= 3) {
                 return response()->json([
-                    'message' => 'Ce numéro est déjà associé à 3 comptes artisans maximum.',
+                    'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes artisans maximum.',
                 ], 422);
             }
         } else {
@@ -39,6 +43,11 @@ class OtpController extends Controller
             if (User::where('telephone', $telephone)->exists()) {
                 return response()->json([
                     'message' => 'Ce numéro de téléphone est déjà utilisé par un compte.',
+                ], 422);
+            }
+            if (User::where('email', $email)->exists()) {
+                return response()->json([
+                    'message' => 'Cet email est déjà utilisé par un compte.',
                 ], 422);
             }
         }
