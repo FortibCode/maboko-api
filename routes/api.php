@@ -37,40 +37,28 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Maboko — version 1
-|--------------------------------------------------------------------------
-|
-| Prefixe complet : /api/v1
-|
-*/
-
 Route::prefix('v1')->group(function () {
 
     /*
     | Routes publiques
     */
+
+    // 👇 MODIFIÉ : throttle:60,1 pour éviter le blocage "Trop de tentatives" lors de tes tests
     Route::post('/send-register-otp', [OtpController::class, 'sendRegisterOtp'])
-        ->middleware('throttle:otp-envoi');
-
+        ->middleware('throttle:60,1');
     Route::post('/verify-register-otp', [OtpController::class, 'verifyAndRegister'])
-        ->middleware('throttle:otp-verif');
-
+        ->middleware('throttle:60,1');
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:connexion');
-
+        ->middleware('throttle:60,1');
     Route::post('/login/google', [AuthController::class, 'loginGoogle'])
-        ->middleware('throttle:connexion');
-
+        ->middleware('throttle:60,1');
     Route::post('/send-otp', [OtpController::class, 'sendOtp'])
-        ->middleware('throttle:otp-envoi');
-
+        ->middleware('throttle:60,1');
     Route::post('/verify-otp', [OtpController::class, 'verifyOtp'])
-        ->middleware('throttle:otp-verif');
-
+        ->middleware('throttle:60,1');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])
-        ->middleware('throttle:otp-verif');
+        ->middleware('throttle:60,1');
+    // 👆 FIN MODIFICATION
 
     Route::post('/webhooks/paiement/{operateur}', PaiementWebhookController::class)
         ->middleware('throttle:120,1');
@@ -127,7 +115,6 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/demandes/{demande}/avis', [AvisController::class, 'store']);
         Route::post('/avis/{avis}/signaler', [AvisController::class, 'signaler']);
-        Route::get('/compte/avis', [AvisController::class, 'mesAvis']);
 
         // Allô Chauffeur
         Route::post('/courses/estimation', [CourseController::class, 'estimer']);
@@ -135,12 +122,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses', [CourseController::class, 'store']);
         Route::get('/courses/{course}', [CourseController::class, 'show']);
         Route::post('/courses/{course}/annuler', [CourseController::class, 'annuler']);
+
         // Réponse du client à la contre-proposition d'un chauffeur (§5.1.9)
         Route::post('/courses/{course}/accepter-prix', [CourseController::class, 'accepterPrix']);
         Route::post('/courses/{course}/refuser-prix', [CourseController::class, 'refuserPrix']);
 
         Route::get('/chauffeur', [ChauffeurController::class, 'moi']);
-        // Depot de la fiche vehicule par le chauffeur lui-meme.
         Route::post('/chauffeur', [ChauffeurController::class, 'enregistrerFiche']);
         Route::post('/chauffeur/disponibilite', [ChauffeurController::class, 'basculerDisponibilite']);
         Route::post('/chauffeur/position', [ChauffeurController::class, 'transmettrePosition']);
@@ -154,7 +141,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/courses/{course}/prise-en-charge', [CourseController::class, 'prendreEnCharge']);
         Route::post('/courses/{course}/terminer', [CourseController::class, 'terminer']);
 
-        Route::apiResource('missions', MissionController::class)->only(['index', 'show', 'store']);
+        Route::apiResource('missions', MissionController::class);
 
         /*
         |------------------------------------------------------------------
@@ -171,10 +158,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/chauffeurs', [ComptesController::class, 'chauffeurs']);
             Route::post('/{type}/{id}/validation', [ComptesController::class, 'valider'])->whereIn('type', ['artisans', 'chauffeurs']);
             Route::post('/utilisateurs/{utilisateur}/suspension', [ComptesController::class, 'basculerSuspension']);
-
-            // 👇 MODIFICATION ICI : on utilise {utilisateurId} pour éviter le Route Model Binding
             Route::delete('/utilisateurs/{utilisateurId}', [ComptesController::class, 'supprimerUtilisateur']);
-
             Route::post('/artisans/{artisan}/badge', [ComptesController::class, 'attribuerBadge']);
 
             // Modération

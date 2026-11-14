@@ -13,22 +13,44 @@ class OtpController extends Controller
 {
     public function __construct(private OtpService $otp) {}
 
-    /**
-     * Inscription, étape 1 : le formulaire est mis en attente et un code
-     * est envoyé par SMS. Aucun compte n'est créé à ce stade.
-     */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // Pas de nettoyage de comptes supprimés ici : User n'utilise pas
-        // SoftDeletes, un compte supprimé disparaît de la table et libère
-        // aussitôt son téléphone et son e-mail.
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/', 'unique:users,telephone'],
-            'password' => 'required|string|min:8',
+            // 👇 On retire "unique:users,email" pour autoriser les doublons
+            'email' => 'required|email|max:255',
+            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
+            'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
         ]);
+
+        $role = $donnees['role'] ?? User::ROLE_CLIENT;
+        $telephone = $donnees['telephone'];
+        $email = $donnees['email'];
+
+        if ($role === User::ROLE_ARTISAN) {
+            // 👇 On vérifie que l'email ou le téléphone n'a pas déjà 3 comptes
+            $comptesTel = User::where('telephone', $telephone)->count();
+            $comptesEmail = User::where('email', $email)->count();
+
+            if ($comptesTel >= 3 || $comptesEmail >= 3) {
+                return response()->json([
+                    'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes artisans maximum.',
+                ], 422);
+            }
+        } else {
+            // Pour les clients, on garde l'unicité stricte
+            if (User::where('telephone', $telephone)->exists()) {
+                return response()->json([
+                    'message' => 'Ce numéro de téléphone est déjà utilisé par un compte.',
+                ], 422);
+            }
+            if (User::where('email', $email)->exists()) {
+                return response()->json([
+                    'message' => 'Cet email est déjà utilisé par un compte.',
+                ], 422);
+            }
+        }
 
         $code = $this->otp->emettrePourInscription($donnees);
 
@@ -39,10 +61,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Inscription, étape 2 : le code est vérifié et le compte est créé
-     * à partir des données mises en attente à l'étape 1.
-     */
     public function verifyAndRegister(Request $request): JsonResponse
     {
         $request->validate([
@@ -65,7 +83,6 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
-        // Aucun compte artisan sans fiche : une fiche provisoire est créée
         if ($user->role === User::ROLE_ARTISAN) {
             $ville = $user->ville ?? 'Brazzaville';
 
@@ -93,9 +110,6 @@ class OtpController extends Controller
         ], 201);
     }
 
-    /**
-     * Mot de passe oublié, étape 1 : envoi du code.
-     */
     public function sendOtp(Request $request): JsonResponse
     {
         $request->validate([
@@ -117,10 +131,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Mot de passe oublié, étape 2 : la vérification du code remet un jeton
-     * à usage unique, seul sésame accepté ensuite par /reset-password.
-     */
     public function verifyOtp(Request $request): JsonResponse
     {
         $request->validate([
@@ -141,10 +151,6 @@ class OtpController extends Controller
         ]);
     }
 
-    /**
-     * En développement sans passerelle SMS, le code peut être renvoyé dans la
-     * réponse. Le drapeau vaut false par défaut et doit le rester en production.
-     */
     private function reponseAvecCode(
         string $message,
         ?string $code,

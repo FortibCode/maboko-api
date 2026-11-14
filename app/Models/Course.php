@@ -64,6 +64,14 @@ class Course extends Model
         'utilisateur_id',
         'lieu_depart',
         'lieu_arrivee',
+
+        // 👇 AJOUT POUR LE TEST (colonnes de la table de base de données) 👇
+        'depart_lat',
+        'depart_lng',
+        'arrivee_lat',
+        'arrivee_lng',
+        // 👆 FIN AJOUT 👆
+
         'depart_latitude',
         'depart_longitude',
         'arrivee_latitude',
