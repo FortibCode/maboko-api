@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Services\MediaService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -15,6 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property int $id
+ * @property int|null $compte_principal_id Renseigné pour un profil rattaché (multi-comptes)
  * @property string $nom
  * @property string|null $prenom
  * @property string|null $avatar_url
@@ -48,9 +51,13 @@ class User extends Authenticatable
 
     public const STATUT_SUSPENDU = 'suspendu';
 
+    /** Comptes d'une même personne, compte principal compris (multi-comptes). */
+    public const MAX_COMPTES = 3;
+
     protected $table = 'users';
 
     protected $fillable = [
+        'compte_principal_id',
         'nom',
         'prenom',
         'telephone',
@@ -96,6 +103,53 @@ class User extends Authenticatable
     public function estAdmin(): bool
     {
         return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN], true);
+    }
+
+    // ------------------------------------------------------------------
+    // Multi-comptes
+    // ------------------------------------------------------------------
+
+    public function estProfilRattache(): bool
+    {
+        return $this->compte_principal_id !== null;
+    }
+
+    /** Compte qui porte la connexion : lui-même, ou celui auquel il est rattaché. */
+    public function comptePrincipal(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'compte_principal_id');
+    }
+
+    public function profilsRattaches(): HasMany
+    {
+        return $this->hasMany(self::class, 'compte_principal_id');
+    }
+
+    public function titulaire(): self
+    {
+        /** @var self|null $principal */
+        $principal = $this->comptePrincipal;
+
+        return $principal ?? $this;
+    }
+
+    /**
+     * Tous les comptes de la personne, compte principal compris.
+     *
+     * @return Builder<self>
+     */
+    public function famille(): Builder
+    {
+        $principal = $this->compte_principal_id ?? $this->id;
+
+        return self::query()
+            ->where(fn (Builder $r) => $r->whereKey($principal)->orWhere('compte_principal_id', $principal));
+    }
+
+    /** Les comptes qui servent à se connecter : jamais un profil rattaché. */
+    public function scopePrincipaux(Builder $requete): Builder
+    {
+        return $requete->whereNull('compte_principal_id');
     }
 
     // ------------------------------------------------------------------

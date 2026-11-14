@@ -190,7 +190,15 @@ class ComptesController extends Controller
         $utilisateur->update(['statut' => $nouveau]);
 
         if ($donnees['suspendre']) {
-            $utilisateur->tokens()->delete();
+            // Suspendre le compte principal ferme la connexion, donc l'accès à
+            // tous ses profils : leurs sessions tombent avec la sienne.
+            $comptes = $utilisateur->estProfilRattache()
+                ? collect([$utilisateur])
+                : $utilisateur->famille()->get();
+
+            foreach ($comptes as $compte) {
+                $compte->tokens()->delete();
+            }
         }
 
         $this->journal->enregistrer(
@@ -238,96 +246,15 @@ class ComptesController extends Controller
 
         try {
             DB::transaction(function () use ($utilisateur) {
-                // 1. Tokens
-                $utilisateur->tokens()->delete();
+                // Les profils rattachés partent avec leur compte principal : sans
+                // lui, plus personne ne pourrait s'y connecter.
+                $comptes = $utilisateur->estProfilRattache()
+                    ? collect()
+                    : $utilisateur->profilsRattaches()->get();
 
-                // 2. Fiche artisan + dépendances
-                if ($artisan = $utilisateur->artisan) {
-                    $artisan->metiers()->detach();
-                    $artisan->badges()->detach();
-                    $artisan->demandes()->delete();
-                    $artisan->avis()->delete();
-                    $artisan->abonnements()->delete();
-
-                    // Tables qui pourraient ne pas exister dans certaines bases
-                    // stories.artisan_id et posts.artisan_id désignent le compte
-                    // (users.id), pas la fiche artisan.
-                    if (Schema::hasTable('stories')) {
-                        DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
-                    }
-                    if (Schema::hasTable('posts')) {
-                        DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
-                    }
-
-                    $artisan->delete();
+                foreach ($comptes->push($utilisateur) as $compte) {
+                    $this->effacerDefinitivement($compte);
                 }
-
-                // 3. Fiche chauffeur
-                if ($utilisateur->chauffeur) {
-                    $utilisateur->chauffeur()->delete();
-                }
-
-                // 4. Données du client
-                $utilisateur->demandes()->delete();
-                $utilisateur->avisDeposes()->delete();
-                $utilisateur->favoris()->delete();
-                $utilisateur->transactions()->delete();
-
-                if (method_exists($utilisateur, 'courses')) {
-                    $utilisateur->courses()->delete();
-                }
-                if (method_exists($utilisateur, 'otpCodes')) {
-                    $utilisateur->otpCodes()->delete();
-                }
-
-                // 5. Follows (pivot)
-                if (Schema::hasTable('follows')) {
-                    DB::table('follows')
-                        ->where('follower_id', $utilisateur->id)
-                        ->orWhere('artisan_id', $utilisateur->id)
-                        ->delete();
-                }
-
-                // 6. Messages (expéditeur)
-                if (Schema::hasTable('messages')) {
-                    DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
-                }
-
-                // 7. Conversations (pivot participant)
-                if (Schema::hasTable('conversation_participants')) {
-                    DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
-
-                    if (Schema::hasTable('conversations')) {
-                        DB::table('conversations')
-                            ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
-                            ->delete();
-                    }
-                }
-
-                // 8. Likes et commentaires
-                if (Schema::hasTable('likes')) {
-                    DB::table('likes')->where('user_id', $utilisateur->id)->delete();
-                }
-                if (Schema::hasTable('commentaires')) {
-                    DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
-                }
-
-                // 9. Notifications : la table Maboko désigne le destinataire par
-                // artisan_id (users.id, quel que soit le rôle), pas par les
-                // colonnes notifiable_* de Laravel, qui n'existent pas ici.
-                if (Schema::hasTable('notifications')) {
-                    DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
-                }
-
-                // 10. Vérification identité
-                if (method_exists($utilisateur, 'verificationIdentite')) {
-                    if ($verif = $utilisateur->verificationIdentite) {
-                        $verif->delete();
-                    }
-                }
-
-                // 11. SUPPRESSION DÉFINITIVE (forceDelete libère le téléphone et l'email)
-                $utilisateur->forceDelete();
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());
@@ -347,6 +274,104 @@ class ComptesController extends Controller
         return response()->json([
             'message' => 'Compte supprimé définitivement.',
         ]);
+    }
+
+    /**
+     * Efface un compte et ce qui en dépend. Appelée dans la transaction de
+     * supprimerUtilisateur(), une fois par compte de la personne.
+     */
+    private function effacerDefinitivement(User $utilisateur): void
+    {
+        // 1. Tokens
+        $utilisateur->tokens()->delete();
+
+        // 2. Fiche artisan + dépendances
+        if ($artisan = $utilisateur->artisan) {
+            $artisan->metiers()->detach();
+            $artisan->badges()->detach();
+            $artisan->demandes()->delete();
+            $artisan->avis()->delete();
+            $artisan->abonnements()->delete();
+
+            // Tables qui pourraient ne pas exister dans certaines bases
+            // stories.artisan_id et posts.artisan_id désignent le compte
+            // (users.id), pas la fiche artisan.
+            if (Schema::hasTable('stories')) {
+                DB::table('stories')->where('artisan_id', $utilisateur->id)->delete();
+            }
+            if (Schema::hasTable('posts')) {
+                DB::table('posts')->where('artisan_id', $utilisateur->id)->delete();
+            }
+
+            $artisan->delete();
+        }
+
+        // 3. Fiche chauffeur
+        if ($utilisateur->chauffeur) {
+            $utilisateur->chauffeur()->delete();
+        }
+
+        // 4. Données du client
+        $utilisateur->demandes()->delete();
+        $utilisateur->avisDeposes()->delete();
+        $utilisateur->favoris()->delete();
+        $utilisateur->transactions()->delete();
+
+        if (method_exists($utilisateur, 'courses')) {
+            $utilisateur->courses()->delete();
+        }
+        if (method_exists($utilisateur, 'otpCodes')) {
+            $utilisateur->otpCodes()->delete();
+        }
+
+        // 5. Follows (pivot)
+        if (Schema::hasTable('follows')) {
+            DB::table('follows')
+                ->where('follower_id', $utilisateur->id)
+                ->orWhere('artisan_id', $utilisateur->id)
+                ->delete();
+        }
+
+        // 6. Messages (expéditeur)
+        if (Schema::hasTable('messages')) {
+            DB::table('messages')->where('expediteur_id', $utilisateur->id)->delete();
+        }
+
+        // 7. Conversations (pivot participant)
+        if (Schema::hasTable('conversation_participants')) {
+            DB::table('conversation_participants')->where('user_id', $utilisateur->id)->delete();
+
+            if (Schema::hasTable('conversations')) {
+                DB::table('conversations')
+                    ->whereNotIn('id', DB::table('conversation_participants')->select('conversation_id'))
+                    ->delete();
+            }
+        }
+
+        // 8. Likes et commentaires
+        if (Schema::hasTable('likes')) {
+            DB::table('likes')->where('user_id', $utilisateur->id)->delete();
+        }
+        if (Schema::hasTable('commentaires')) {
+            DB::table('commentaires')->where('user_id', $utilisateur->id)->delete();
+        }
+
+        // 9. Notifications : la table Maboko désigne le destinataire par
+        // artisan_id (users.id, quel que soit le rôle), pas par les
+        // colonnes notifiable_* de Laravel, qui n'existent pas ici.
+        if (Schema::hasTable('notifications')) {
+            DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
+        }
+
+        // 10. Vérification identité
+        if (method_exists($utilisateur, 'verificationIdentite')) {
+            if ($verif = $utilisateur->verificationIdentite) {
+                $verif->delete();
+            }
+        }
+
+        // 11. SUPPRESSION DÉFINITIVE (forceDelete libère le téléphone et l'email)
+        $utilisateur->forceDelete();
     }
 
     /** Attribution manuelle d'un badge (§4.5). */

@@ -24,8 +24,13 @@ class OtpController extends Controller
         // aussitôt son téléphone et son e-mail.
         $donnees = $request->validate([
             'nom' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/', 'unique:users,telephone'],
+            // Unicité entre comptes principaux : les profils rattachés d'un
+            // artisan reprennent son téléphone et son email.
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->whereNull('compte_principal_id')],
+            'telephone' => [
+                'required', 'string', 'regex:/^\+2420[456]\d{7}$/',
+                Rule::unique('users', 'telephone')->whereNull('compte_principal_id'),
+            ],
             'password' => 'required|string|min:8',
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
         ]);
@@ -65,21 +70,8 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
-        // Aucun compte artisan sans fiche : une fiche provisoire est créée
         if ($user->role === User::ROLE_ARTISAN) {
-            $ville = $user->ville ?? 'Brazzaville';
-
-            Artisan::create([
-                'utilisateur_id' => $user->id,
-                'specialite' => 'À compléter',
-                'adresse' => $ville.', Congo',
-                'latitude' => -4.2634,
-                'longitude' => 15.2429,
-                'bio' => 'Artisan à '.$ville,
-                'zone_intervention' => $ville,
-                'rayon_km' => 10,
-                'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
-            ]);
+            Artisan::creerFicheProvisoire($user);
         }
 
         $otp->update(['user_id' => $user->id, 'statut' => true]);
@@ -102,7 +94,7 @@ class OtpController extends Controller
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
         ]);
 
-        $user = User::where('telephone', $request->telephone)->first();
+        $user = User::principaux()->where('telephone', $request->telephone)->first();
         $code = null;
 
         if ($user) {
