@@ -25,6 +25,9 @@ class UserAdminResource extends JsonResource
             'role' => $this->resource->role,
             'statut' => $this->resource->statut,
             'compteSuspendu' => $this->resource->statut === User::STATUT_SUSPENDU,
+            // Multi-comptes : un profil rattaché partage le téléphone et l'email
+            // de son compte principal.
+            'comptePrincipalId' => $this->resource->compte_principal_id,
             'isVerified' => (bool) $this->resource->is_verified,
             'avatarUrl' => $this->resource->avatar_url,
             'ville' => $this->resource->ville,

@@ -15,6 +15,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AvisController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\ChauffeurController;
+use App\Http\Controllers\CompteController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\DemandeDevisController;
@@ -90,6 +91,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/compte/avatar', [AuthController::class, 'enregistrerAvatar']);
         Route::delete('/compte/avatar', [AuthController::class, 'supprimerAvatar']);
         Route::delete('/compte', [AuthController::class, 'supprimerCompte']);
+
+        // Multi-comptes artisan (sur le modèle d'Instagram)
+        Route::get('/comptes', [CompteController::class, 'index']);
+        Route::post('/comptes', [CompteController::class, 'store'])->middleware('throttle:10,1');
+        Route::post('/comptes/{compte}/basculer', [CompteController::class, 'basculer'])->whereNumber('compte');
 
         Route::get('/tableau-de-bord', TableauDeBordController::class);
 
