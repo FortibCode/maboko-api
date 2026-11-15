@@ -11,8 +11,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -27,7 +25,8 @@ use Laravel\Sanctum\HasApiTokens;
  */
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    // 👇 J'ai retiré le trait Notifiable qui générait 'notifiable_id'
+    use HasApiTokens, HasFactory;
 
     public const ROLE_CLIENT = 'client';
 
@@ -87,7 +86,7 @@ class User extends Authenticatable
     }
 
     // ------------------------------------------------------------------
-    // Roles
+    // Rôles
     // ------------------------------------------------------------------
 
     public function estArtisan(): bool
@@ -227,6 +226,15 @@ class User extends Authenticatable
     public function verificationIdentite(): HasOne
     {
         return $this->hasOne(VerificationIdentite::class)->latestOfMany();
+    }
+
+    /**
+     * 👇 Relation customisée qui pointe vers 'artisan_id'
+     * (puisque la table notifications utilise cette colonne).
+     */
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class, 'artisan_id');
     }
 
     protected function avatarUrl(): Attribute

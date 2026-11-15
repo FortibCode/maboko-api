@@ -13,27 +13,38 @@ class OtpController extends Controller
 {
     public function __construct(private OtpService $otp) {}
 
-    /**
-     * Inscription, étape 1 : le formulaire est mis en attente et un code
-     * est envoyé par SMS. Aucun compte n'est créé à ce stade.
-     */
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // Pas de nettoyage de comptes supprimés ici : User n'utilise pas
-        // SoftDeletes, un compte supprimé disparaît de la table et libère
-        // aussitôt son téléphone et son e-mail.
-        $donnees = $request->validate([
+        // 👇 On récupère le drapeau envoyé par l'application
+        $estAjoutCompte = $request->boolean('est_ajout_compte');
+
+        $regles = [
             'nom' => 'required|string|max:255',
-            // Unicité entre comptes principaux : les profils rattachés d'un
-            // artisan reprennent son téléphone et son email.
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->whereNull('compte_principal_id')],
-            'telephone' => [
-                'required', 'string', 'regex:/^\+2420[456]\d{7}$/',
-                Rule::unique('users', 'telephone')->whereNull('compte_principal_id'),
-            ],
-            'password' => 'required|string|min:8',
+            'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
+            'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
-        ]);
+        ];
+
+        // 👇 La règle d'unicité change selon le contexte
+        if ($estAjoutCompte) {
+            // Si on ajoute un compte, on limite juste à 3 comptes max par email/tel
+            $regles['email'] = 'required|email|max:255';
+            
+            $emailCount = User::where('email', $request->email)->count();
+            $telCount = User::where('telephone', $request->telephone)->count();
+            
+            if ($emailCount >= 3 || $telCount >= 3) {
+                return response()->json([
+                    'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes maximum.',
+                ], 422);
+            }
+        } else {
+            // Si c'est une inscription classique, on garde l'unicité stricte
+            $regles['email'] = 'required|email|max:255|unique:users,email';
+            $regles['telephone'][] = 'unique:users,telephone';
+        }
+
+        $donnees = $request->validate($regles);
 
         $code = $this->otp->emettrePourInscription($donnees);
 
@@ -44,10 +55,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Inscription, étape 2 : le code est vérifié et le compte est créé
-     * à partir des données mises en attente à l'étape 1.
-     */
     public function verifyAndRegister(Request $request): JsonResponse
     {
         $request->validate([
@@ -71,7 +78,19 @@ class OtpController extends Controller
         ]);
 
         if ($user->role === User::ROLE_ARTISAN) {
-            Artisan::creerFicheProvisoire($user);
+            $ville = $user->ville ?? 'Brazzaville';
+
+            Artisan::create([
+                'utilisateur_id' => $user->id,
+                'specialite' => 'À compléter',
+                'adresse' => $ville.', Congo',
+                'latitude' => -4.2634,
+                'longitude' => 15.2429,
+                'bio' => 'Artisan à '.$ville,
+                'zone_intervention' => $ville,
+                'rayon_km' => 10,
+                'statut_validation' => Artisan::VALIDATION_EN_ATTENTE,
+            ]);
         }
 
         $otp->update(['user_id' => $user->id, 'statut' => true]);
@@ -85,16 +104,13 @@ class OtpController extends Controller
         ], 201);
     }
 
-    /**
-     * Mot de passe oublié, étape 1 : envoi du code.
-     */
     public function sendOtp(Request $request): JsonResponse
     {
         $request->validate([
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
         ]);
 
-        $user = User::principaux()->where('telephone', $request->telephone)->first();
+        $user = User::where('telephone', $request->telephone)->first();
         $code = null;
 
         if ($user) {
@@ -109,10 +125,6 @@ class OtpController extends Controller
         ));
     }
 
-    /**
-     * Mot de passe oublié, étape 2 : la vérification du code remet un jeton
-     * à usage unique, seul sésame accepté ensuite par /reset-password.
-     */
     public function verifyOtp(Request $request): JsonResponse
     {
         $request->validate([
@@ -133,10 +145,6 @@ class OtpController extends Controller
         ]);
     }
 
-    /**
-     * En développement sans passerelle SMS, le code peut être renvoyé dans la
-     * réponse. Le drapeau vaut false par défaut et doit le rester en production.
-     */
     private function reponseAvecCode(
         string $message,
         ?string $code,

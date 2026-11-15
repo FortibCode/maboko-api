@@ -13,9 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
-/**
- * Espace du chauffeur (§5.3) : fiche, disponibilité, position et revenus.
- */
 class ChauffeurController extends Controller
 {
     public function __construct(private MediaService $media) {}
@@ -36,11 +33,11 @@ class ChauffeurController extends Controller
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
+            'estClimatise' => (bool) $chauffeur->est_climatise,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisConduire' => $chauffeur->permis_conduire,
             'permisCategories' => $chauffeur->permis_categories,
-            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => (bool) $chauffeur->en_ligne,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
@@ -135,7 +132,7 @@ class ChauffeurController extends Controller
 
         return response()->json([
             'aujourdhui' => (float) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->sum('tarif_final'),
-            'coursesAujourdhui' => (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
+            'coursesAujourdhui' => (int) (clone $terminees)->whereDate('terminee_at', now()->toDateString())->count(),
             'semaine' => $semaine->values(),
             'totalSemaine' => (float) $semaine->sum('total'),
             'total' => (float) (clone $terminees)->sum('tarif_final'),
@@ -143,31 +140,20 @@ class ChauffeurController extends Controller
         ]);
     }
 
-    /**
-     * Depot de la fiche vehicule par le chauffeur lui-meme (§5.3.1).
-     *
-     * Jusqu'ici seul le seeder creait des lignes « chauffeurs » : un compte
-     * inscrit depuis l'application n'avait aucun moyen d'obtenir sa fiche, et
-     * restait bloque sur un ecran l'invitant a contacter l'equipe.
-     *
-     * La fiche part en attente : c'est l'ecran d'administration existant qui
-     * la valide ou la refuse. Une modification apres validation repasse en
-     * attente, car le vehicule approuve n'est plus le meme.
-     */
     public function enregistrerFiche(Request $request): JsonResponse
     {
         $utilisateur = $request->user();
 
         if (! $utilisateur->estChauffeur()) {
             return response()->json([
-                'message' => 'Seul un compte chauffeur peut deposer une fiche vehicule.',
+                'message' => 'Seul un compte chauffeur peut déposer une fiche véhicule.',
             ], 403);
         }
 
         $existante = $this->fiche($request);
 
         $donnees = $request->validate([
-            'type_vehicule' => ['required', Rule::in([Chauffeur::VEHICULE_MOTO, Chauffeur::VEHICULE_VOITURE])],
+            'type_vehicule' => ['required', 'string', Rule::in(['taxi', 'voiture', 'utilitaire', 'camion', 'bus', 'moto'])],
             'vehicule_modele' => ['required', 'string', 'max:120'],
             'plaque_immatriculation' => [
                 'required', 'string', 'max:20',
@@ -197,12 +183,10 @@ class ChauffeurController extends Controller
         }
 
         unset($donnees['photo_recto'], $donnees['photo_verso']);
-
         $donnees['statut_validation'] = Chauffeur::VALIDATION_EN_ATTENTE;
         $donnees['valide_at'] = null;
 
         if ($existante) {
-            // Un vehicule non valide ne doit pas rester visible a l'appariement.
             $donnees['en_ligne'] = false;
             $existante->update($donnees);
             $chauffeur = $existante->fresh();
@@ -215,14 +199,14 @@ class ChauffeurController extends Controller
         }
 
         return response()->json([
-            'message' => 'Fiche enregistree. Elle sera examinee par l\'equipe Maboko.',
+            'message' => 'Fiche enregistrée. Elle sera examinée par l\'équipe Maboko.',
             'ficheManquante' => false,
             'id' => $chauffeur->id,
             'typeVehicule' => $chauffeur->type_vehicule,
+            'estClimatise' => (bool) $chauffeur->est_climatise,
             'vehicule' => $chauffeur->vehicule_modele,
             'plaque' => $chauffeur->plaque_immatriculation,
             'permisCategories' => $chauffeur->permis_categories,
-            'climatise' => (bool) $chauffeur->est_climatise,
             'enLigne' => false,
             'disponible' => (bool) $chauffeur->disponibilite,
             'statutValidation' => $chauffeur->statut_validation,
