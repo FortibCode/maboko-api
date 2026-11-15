@@ -18,6 +18,7 @@ use Laravel\Sanctum\HasApiTokens;
 /**
  * @property int $id
  * @property int|null $compte_principal_id Renseigné pour un profil rattaché (multi-comptes)
+ * @property Carbon|null $archive_at Profil retiré de la liste des comptes, données conservées
  * @property string $nom
  * @property string|null $prenom
  * @property string|null $avatar_url
@@ -51,13 +52,11 @@ class User extends Authenticatable
 
     public const STATUT_SUSPENDU = 'suspendu';
 
-    /** Comptes d'une même personne, compte principal compris (multi-comptes). */
-    public const MAX_COMPTES = 3;
-
     protected $table = 'users';
 
     protected $fillable = [
         'compte_principal_id',
+        'archive_at',
         'nom',
         'prenom',
         'telephone',
@@ -83,6 +82,7 @@ class User extends Authenticatable
             'is_verified' => 'boolean',
             'password' => 'hashed',
             'derniere_connexion_at' => 'datetime',
+            'archive_at' => 'datetime',
         ];
     }
 
@@ -109,9 +109,20 @@ class User extends Authenticatable
     // Multi-comptes
     // ------------------------------------------------------------------
 
+    /** Comptes actifs qu'une personne peut réunir (config/multi_comptes.php). */
+    public static function maximumComptes(): int
+    {
+        return max(1, (int) config('multi_comptes.maximum', 3));
+    }
+
     public function estProfilRattache(): bool
     {
         return $this->compte_principal_id !== null;
+    }
+
+    public function estArchive(): bool
+    {
+        return $this->archive_at !== null;
     }
 
     /** Compte qui porte la connexion : lui-même, ou celui auquel il est rattaché. */
@@ -144,6 +155,17 @@ class User extends Authenticatable
 
         return self::query()
             ->where(fn (Builder $r) => $r->whereKey($principal)->orWhere('compte_principal_id', $principal));
+    }
+
+    /**
+     * Comptes de la personne qu'elle utilise encore : les profils archivés
+     * restent en base mais sortent du sélecteur et de la limite.
+     *
+     * @return Builder<self>
+     */
+    public function familleActive(): Builder
+    {
+        return $this->famille()->whereNull('archive_at');
     }
 
     /** Les comptes qui servent à se connecter : jamais un profil rattaché. */

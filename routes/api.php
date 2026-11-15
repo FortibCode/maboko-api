@@ -95,7 +95,17 @@ Route::prefix('v1')->group(function () {
         // Multi-comptes artisan (sur le modèle d'Instagram)
         Route::get('/comptes', [CompteController::class, 'index']);
         Route::post('/comptes', [CompteController::class, 'store'])->middleware('throttle:10,1');
-        Route::post('/comptes/{compte}/basculer', [CompteController::class, 'basculer'])->whereNumber('compte');
+        Route::post('/comptes/associations', [CompteController::class, 'demanderAssociation'])
+            ->middleware(['throttle:connexion', 'throttle:otp-envoi']);
+        Route::post('/comptes/associations/confirmer', [CompteController::class, 'confirmerAssociation'])
+            ->middleware('throttle:otp-verif');
+        Route::whereNumber('compte')->group(function () {
+            Route::post('/comptes/{compte}/basculer', [CompteController::class, 'basculer']);
+            Route::post('/comptes/{compte}/principal', [CompteController::class, 'definirPrincipal'])->middleware('throttle:10,1');
+            Route::post('/comptes/{compte}/archiver', [CompteController::class, 'archiver']);
+            Route::post('/comptes/{compte}/reactiver', [CompteController::class, 'reactiver']);
+            Route::delete('/comptes/{compte}', [CompteController::class, 'destroy'])->middleware('throttle:10,1');
+        });
 
         Route::get('/tableau-de-bord', TableauDeBordController::class);
 

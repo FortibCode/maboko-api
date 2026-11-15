@@ -291,20 +291,19 @@ class AuthController extends Controller
             return response()->json(['message' => 'Mot de passe incorrect.'], 422);
         }
 
-        // Supprimer le compte principal emporte ses profils : sans lui, plus
-        // personne ne pourrait s'y connecter.
-        $comptes = $utilisateur->estProfilRattache()
-            ? collect([$utilisateur])
-            : $utilisateur->famille()->get()->sortByDesc('compte_principal_id');
-
-        foreach ($comptes as $compte) {
-            $suppression->supprimer($compte);
+        // Le compte principal porte la connexion de tous les autres : il
+        // reste tant qu'un compte lui est rattaché, même archivé.
+        if (! $utilisateur->estProfilRattache() && $utilisateur->profilsRattaches()->exists()) {
+            return response()->json([
+                'message' => 'D’autres comptes sont rattachés à celui-ci. Supprimez-les, ou faites de l’un d’eux '
+                    .'votre compte principal, avant de supprimer ce compte.',
+            ], 422);
         }
 
+        $suppression->supprimer($utilisateur);
+
         return response()->json([
-            'message' => $comptes->count() > 1
-                ? 'Votre compte et ses profils ont été supprimés. Vos données personnelles ont été effacées.'
-                : 'Votre compte a été supprimé. Vos données personnelles ont été effacées.',
+            'message' => 'Votre compte a été supprimé. Vos données personnelles ont été effacées.',
         ]);
     }
 }

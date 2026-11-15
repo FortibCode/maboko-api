@@ -30,6 +30,8 @@ class ArtisanController extends Controller
 
         $requete = Artisan::query()
             ->valides()
+            // Un compte archivé par son titulaire ne reçoit plus de demandes.
+            ->whereHas('utilisateur', fn ($u) => $u->whereNull('archive_at'))
             ->with(['utilisateur:id,nom,prenom,avatar_url,ville,quartier,role', 'metiers', 'badges', 'abonnementActif.plan']);
 
         if (isset($filtres['metier'])) {
