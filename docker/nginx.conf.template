@@ -22,6 +22,8 @@ http {
     # pese pres de 7 Mo une fois encodee. La limite par defaut d'nginx est
     # de 1 Mo et rejetterait l'envoi avec une erreur 413.
     client_max_body_size 20m;
+    client_body_buffer_size 512k;
+    client_body_temp_path /tmp/nginx_client_body 1 2;
 
     gzip on;
     gzip_types application/json application/javascript text/css text/plain;

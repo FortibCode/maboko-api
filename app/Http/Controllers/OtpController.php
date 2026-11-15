@@ -15,33 +15,36 @@ class OtpController extends Controller
 
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        $donnees = $request->validate([
+        // 👇 On récupère le drapeau envoyé par l'application
+        $estAjoutCompte = $request->boolean('est_ajout_compte');
+
+        $regles = [
             'nom' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
             'telephone' => ['required', 'string', 'regex:/^\+2420[456]\d{7}$/'],
             'password' => ['required', 'string'],
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
-        ]);
+        ];
 
-        $role = $donnees['role'] ?? User::ROLE_CLIENT;
-        $telephone = $donnees['telephone'];
-
-        // 👇 NOUVELLE LOGIQUE : 3 comptes max pour les artisans
-        if ($role === User::ROLE_ARTISAN) {
-            $nombreComptes = User::where('telephone', $telephone)->count();
-            if ($nombreComptes >= 3) {
+        // 👇 La règle d'unicité change selon le contexte
+        if ($estAjoutCompte) {
+            // Si on ajoute un compte, on limite juste à 3 comptes max par email/tel
+            $regles['email'] = 'required|email|max:255';
+            
+            $emailCount = User::where('email', $request->email)->count();
+            $telCount = User::where('telephone', $request->telephone)->count();
+            
+            if ($emailCount >= 3 || $telCount >= 3) {
                 return response()->json([
-                    'message' => 'Ce numéro est déjà associé à 3 comptes artisans maximum.',
+                    'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes maximum.',
                 ], 422);
             }
         } else {
-            // Pour les clients, on garde l'unicité stricte
-            if (User::where('telephone', $telephone)->exists()) {
-                return response()->json([
-                    'message' => 'Ce numéro de téléphone est déjà utilisé par un compte.',
-                ], 422);
-            }
+            // Si c'est une inscription classique, on garde l'unicité stricte
+            $regles['email'] = 'required|email|max:255|unique:users,email';
+            $regles['telephone'][] = 'unique:users,telephone';
         }
+
+        $donnees = $request->validate($regles);
 
         $code = $this->otp->emettrePourInscription($donnees);
 

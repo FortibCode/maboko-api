@@ -84,10 +84,12 @@ RUN mkdir -p \
         storage/app/private \
         bootstrap/cache
 
-# php-fpm tourne sous « www-data » : il doit pouvoir ecrire les caches, les
-# journaux et les fichiers deposes.
-RUN chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R ug+rwX storage bootstrap/cache
+# php-fpm et nginx tournent sous « www-data » : ils doivent pouvoir ecrire les
+# caches, les journaux, les fichiers deposes et les corps de requetes temporaires.
+RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /tmp/nginx_client_body \
+    && chown -R www-data:www-data storage bootstrap/cache /var/lib/nginx /var/log/nginx /tmp/nginx_client_body \
+    && chmod -R ug+rwX storage bootstrap/cache \
+    && chmod -R 777 /tmp/nginx_client_body
 
 # Valeur indicative : Render impose la sienne par la variable PORT, lue au
 # demarrage.

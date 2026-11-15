@@ -56,6 +56,8 @@ class SuppressionCompte
             $utilisateur->tokens()->delete();
 
             $utilisateur->update([
+                // Un profil supprimé quitte la liste des comptes de la personne.
+                'compte_principal_id' => null,
                 'nom' => 'Compte supprimé',
                 'prenom' => null,
                 // Valeurs uniques : les colonnes le sont, et un second compte

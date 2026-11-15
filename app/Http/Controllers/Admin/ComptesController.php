@@ -316,19 +316,11 @@ class ComptesController extends Controller
                     DB::table('commentaires')->where('auteur_id', $utilisateur->id)->delete();
                 }
 
-<<<<<<< HEAD
                 if (Schema::hasTable('notifications')) {
                     DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
                     if (Schema::hasColumn('notifications', 'user_id')) {
                         DB::table('notifications')->where('user_id', $utilisateur->id)->delete();
                     }
-=======
-                // 9. Notifications : la table Maboko désigne le destinataire par
-                // artisan_id (users.id, quel que soit le rôle), pas par les
-                // colonnes notifiable_* de Laravel, qui n'existent pas ici.
-                if (Schema::hasTable('notifications')) {
-                    DB::table('notifications')->where('artisan_id', $utilisateur->id)->delete();
->>>>>>> 43dc4654fa0e10e211e9e493b9a4e8d0785ee033
                 }
 
                 if (method_exists($utilisateur, 'verificationIdentite')) {

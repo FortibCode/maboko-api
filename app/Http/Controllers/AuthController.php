@@ -32,8 +32,10 @@ class AuthController extends Controller
         // Le champ historique s'appelle "email" mais accepte aussi le telephone.
         $identifiant = $request->input('identifiant', $request->input('email'));
 
-        $user = User::where('email', $identifiant)
-            ->orWhere('telephone', $identifiant)
+        // Un profil rattaché partage téléphone et email avec son compte
+        // principal : seul ce dernier ouvre une session.
+        $user = User::principaux()
+            ->where(fn ($r) => $r->where('email', $identifiant)->orWhere('telephone', $identifiant))
             ->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
@@ -74,7 +76,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Jeton Google invalide ou non vérifié.'], 401);
         }
 
-        $user = User::where('email', $identite['email'])->first();
+        $user = User::principaux()->where('email', $identite['email'])->first();
 
         if (! $user) {
             $user = User::create([
@@ -144,7 +146,7 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = User::where('telephone', $request->telephone)->first();
+        $user = User::principaux()->where('telephone', $request->telephone)->first();
 
         if (! $user) {
             return response()->json(['message' => 'Utilisateur introuvable.'], 404);
@@ -152,9 +154,12 @@ class AuthController extends Controller
 
         $user->update(['password' => Hash::make($request->password)]);
 
-        // Toute session ouverte ailleurs est revoquee : si le compte etait
-        // compromis, le changement de mot de passe en reprend le controle.
-        $user->tokens()->delete();
+        // Toute session ouverte ailleurs est revoquee, profils rattaches
+        // compris : si le compte etait compromis, le changement de mot de
+        // passe en reprend le controle.
+        foreach ($user->famille()->get() as $compte) {
+            $compte->tokens()->delete();
+        }
 
         return response()->json(['message' => 'Mot de passe modifie. Reconnectez-vous.']);
     }
@@ -228,11 +233,24 @@ class AuthController extends Controller
             'prenom' => 'sometimes|nullable|string|max:255',
             'email' => [
                 'sometimes', 'required', 'email', 'max:255',
-                Rule::unique('users', 'email')->ignore($utilisateur->id),
+                Rule::unique('users', 'email')->whereNull('compte_principal_id')->ignore($utilisateur->id),
             ],
             'ville' => 'sometimes|nullable|string|max:120',
             'quartier' => 'sometimes|nullable|string|max:120',
         ]);
+
+        if (isset($donnees['email']) && $donnees['email'] !== $utilisateur->email) {
+            // L'email sert à se connecter : il appartient au compte principal,
+            // et ses profils rattachés le suivent.
+            if ($utilisateur->estProfilRattache()) {
+                return response()->json([
+                    'message' => 'L’email se modifie depuis le compte principal.',
+                    'errors' => ['email' => ['L’email se modifie depuis le compte principal.']],
+                ], 422);
+            }
+
+            $utilisateur->profilsRattaches()->update(['email' => $donnees['email']]);
+        }
 
         $utilisateur->update($donnees);
 
@@ -267,14 +285,26 @@ class AuthController extends Controller
 
         $utilisateur = $request->user();
 
-        if (! Hash::check($request->password, $utilisateur->password)) {
+        // Un profil rattaché n'a pas de mot de passe à lui : c'est celui du
+        // compte principal qui protège toute la famille.
+        if (! Hash::check($request->password, $utilisateur->titulaire()->password)) {
             return response()->json(['message' => 'Mot de passe incorrect.'], 422);
         }
 
-        $suppression->supprimer($utilisateur);
+        // Supprimer le compte principal emporte ses profils : sans lui, plus
+        // personne ne pourrait s'y connecter.
+        $comptes = $utilisateur->estProfilRattache()
+            ? collect([$utilisateur])
+            : $utilisateur->famille()->get()->sortByDesc('compte_principal_id');
+
+        foreach ($comptes as $compte) {
+            $suppression->supprimer($compte);
+        }
 
         return response()->json([
-            'message' => 'Votre compte a été supprimé. Vos données personnelles ont été effacées.',
+            'message' => $comptes->count() > 1
+                ? 'Votre compte et ses profils ont été supprimés. Vos données personnelles ont été effacées.'
+                : 'Votre compte a été supprimé. Vos données personnelles ont été effacées.',
         ]);
     }
 }

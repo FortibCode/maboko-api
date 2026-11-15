@@ -63,6 +63,27 @@ class Artisan extends Model
     // Relations
     // ------------------------------------------------------------------
 
+    /**
+     * Aucun compte artisan sans fiche : une fiche provisoire, en attente de
+     * validation, est créée à l'inscription comme à l'ajout d'un profil.
+     */
+    public static function creerFicheProvisoire(User $utilisateur): self
+    {
+        $ville = $utilisateur->ville ?? 'Brazzaville';
+
+        return self::create([
+            'utilisateur_id' => $utilisateur->id,
+            'specialite' => 'À compléter',
+            'adresse' => $ville.', Congo',
+            'latitude' => -4.2634,
+            'longitude' => 15.2429,
+            'bio' => 'Artisan à '.$ville,
+            'zone_intervention' => $ville,
+            'rayon_km' => 10,
+            'statut_validation' => self::VALIDATION_EN_ATTENTE,
+        ]);
+    }
+
     public function utilisateur(): BelongsTo
     {
         return $this->belongsTo(User::class, 'utilisateur_id');
