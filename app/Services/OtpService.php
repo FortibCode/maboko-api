@@ -82,6 +82,34 @@ class OtpService
     }
 
     /**
+     * Emet un code prouvant la propriété d'un compte que l'on veut rattacher
+     * au sien (multi-comptes). Il part au numéro du compte visé.
+     */
+    public function emettrePourAssociation(int $userId, string $telephone): string
+    {
+        $code = $this->genererCode();
+
+        $this->purger($telephone);
+
+        OtpCode::create([
+            'user_id' => $userId,
+            'telephone' => $telephone,
+            'code' => $code,
+            'expiration' => now()->addMinutes(self::VALIDITE_CODE_MINUTES),
+            'statut' => false,
+        ]);
+
+        $this->envoyer(
+            $telephone,
+            $code,
+            "Maboko : votre code pour rattacher ce compte a un autre est {$code}. Si vous n'etes pas a l'origine de cette demande, ignorez ce message.",
+            self::CONTEXTE_ASSOCIATION,
+        );
+
+        return $code;
+    }
+
+    /**
      * Verifie un code. Retourne la ligne OTP si le code est bon, null sinon.
      * Chaque echec incremente le compteur de tentatives ; au-dela du seuil
      * le code est invalide, ce qui rend le tirage au sort inexploitable.
@@ -197,6 +225,9 @@ class OtpService
     /** Le code ouvre le changement de mot de passe d'un compte existant. */
     public const CONTEXTE_REINITIALISATION = 'reinitialisation';
 
+    /** Le code prouve la propriété d'un compte que l'on rattache au sien. */
+    public const CONTEXTE_ASSOCIATION = 'association';
+
     /**
      * Le code peut-il voyager dans la reponse HTTP ?
      *
@@ -225,7 +256,9 @@ class OtpService
             return false;
         }
 
-        if ($contexte === self::CONTEXTE_REINITIALISATION) {
+        // Réinitialisation et association donnent accès à un compte existant :
+        // jamais de code dans la réponse hors du poste de développement.
+        if ($contexte !== self::CONTEXTE_INSCRIPTION) {
             return in_array(config('app.env'), ['local', 'testing'], true);
         }
 
