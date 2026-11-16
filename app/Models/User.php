@@ -11,45 +11,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
-/**
- * @property int $id
- * @property int|null $compte_principal_id Renseigné pour un profil rattaché (multi-comptes)
- * @property Carbon|null $archive_at Profil retiré de la liste des comptes, données conservées
- * @property string $nom
- * @property string|null $prenom
- * @property string|null $avatar_url
- * @property string $role
- * @property string $statut
- * @property Carbon|null $derniere_connexion_at
- */
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory;
 
     public const ROLE_CLIENT = 'client';
-
     public const ROLE_ARTISAN = 'artisan';
-
     public const ROLE_CHAUFFEUR = 'chauffeur';
-
     public const ROLE_ADMIN = 'admin';
-
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
     public const ROLES = [
-        self::ROLE_CLIENT,
-        self::ROLE_ARTISAN,
-        self::ROLE_CHAUFFEUR,
-        self::ROLE_ADMIN,
-        self::ROLE_SUPER_ADMIN,
+        self::ROLE_CLIENT, self::ROLE_ARTISAN, self::ROLE_CHAUFFEUR,
+        self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN,
     ];
 
     public const STATUT_ACTIF = 'actif';
-
     public const STATUT_SUSPENDU = 'suspendu';
 
     protected $table = 'users';
@@ -57,6 +36,7 @@ class User extends Authenticatable
     protected $fillable = [
         'compte_principal_id',
         'archive_at',
+        'matricule', // 👈 AJOUT
         'nom',
         'prenom',
         'telephone',
@@ -86,10 +66,6 @@ class User extends Authenticatable
         ];
     }
 
-    // ------------------------------------------------------------------
-    // Roles
-    // ------------------------------------------------------------------
-
     public function estArtisan(): bool
     {
         return $this->role === self::ROLE_ARTISAN;
@@ -105,11 +81,6 @@ class User extends Authenticatable
         return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN], true);
     }
 
-    // ------------------------------------------------------------------
-    // Multi-comptes
-    // ------------------------------------------------------------------
-
-    /** Comptes actifs qu'une personne peut réunir (config/multi_comptes.php). */
     public static function maximumComptes(): int
     {
         return max(1, (int) config('multi_comptes.maximum', 3));
@@ -125,7 +96,6 @@ class User extends Authenticatable
         return $this->archive_at !== null;
     }
 
-    /** Compte qui porte la connexion : lui-même, ou celui auquel il est rattaché. */
     public function comptePrincipal(): BelongsTo
     {
         return $this->belongsTo(self::class, 'compte_principal_id');
@@ -144,11 +114,6 @@ class User extends Authenticatable
         return $principal ?? $this;
     }
 
-    /**
-     * Tous les comptes de la personne, compte principal compris.
-     *
-     * @return Builder<self>
-     */
     public function famille(): Builder
     {
         $principal = $this->compte_principal_id ?? $this->id;
@@ -157,26 +122,15 @@ class User extends Authenticatable
             ->where(fn (Builder $r) => $r->whereKey($principal)->orWhere('compte_principal_id', $principal));
     }
 
-    /**
-     * Comptes de la personne qu'elle utilise encore : les profils archivés
-     * restent en base mais sortent du sélecteur et de la limite.
-     *
-     * @return Builder<self>
-     */
     public function familleActive(): Builder
     {
         return $this->famille()->whereNull('archive_at');
     }
 
-    /** Les comptes qui servent à se connecter : jamais un profil rattaché. */
     public function scopePrincipaux(Builder $requete): Builder
     {
         return $requete->whereNull('compte_principal_id');
     }
-
-    // ------------------------------------------------------------------
-    // Relations
-    // ------------------------------------------------------------------
 
     public function artisan(): HasOne
     {
@@ -249,6 +203,11 @@ class User extends Authenticatable
     public function verificationIdentite(): HasOne
     {
         return $this->hasOne(VerificationIdentite::class)->latestOfMany();
+    }
+
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class, 'artisan_id');
     }
 
     protected function avatarUrl(): Attribute
