@@ -13,50 +13,30 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-/**
- * @property int $id
- * @property int|null $compte_principal_id Renseigné pour un profil rattaché (multi-comptes)
- * @property string $nom
- * @property string|null $prenom
- * @property string|null $avatar_url
- * @property string $role
- * @property string $statut
- * @property Carbon|null $derniere_connexion_at
- */
 class User extends Authenticatable
 {
-    // 👇 J'ai retiré le trait Notifiable qui générait 'notifiable_id'
     use HasApiTokens, HasFactory;
 
     public const ROLE_CLIENT = 'client';
-
     public const ROLE_ARTISAN = 'artisan';
-
     public const ROLE_CHAUFFEUR = 'chauffeur';
-
     public const ROLE_ADMIN = 'admin';
-
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
     public const ROLES = [
-        self::ROLE_CLIENT,
-        self::ROLE_ARTISAN,
-        self::ROLE_CHAUFFEUR,
-        self::ROLE_ADMIN,
-        self::ROLE_SUPER_ADMIN,
+        self::ROLE_CLIENT, self::ROLE_ARTISAN, self::ROLE_CHAUFFEUR,
+        self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN,
     ];
 
     public const STATUT_ACTIF = 'actif';
-
     public const STATUT_SUSPENDU = 'suspendu';
-
-    /** Comptes d'une même personne, compte principal compris (multi-comptes). */
-    public const MAX_COMPTES = 3;
 
     protected $table = 'users';
 
     protected $fillable = [
         'compte_principal_id',
+        'archive_at',
+        'matricule', // 👈 AJOUT
         'nom',
         'prenom',
         'telephone',
@@ -82,12 +62,9 @@ class User extends Authenticatable
             'is_verified' => 'boolean',
             'password' => 'hashed',
             'derniere_connexion_at' => 'datetime',
+            'archive_at' => 'datetime',
         ];
     }
-
-    // ------------------------------------------------------------------
-    // Rôles
-    // ------------------------------------------------------------------
 
     public function estArtisan(): bool
     {
@@ -104,16 +81,21 @@ class User extends Authenticatable
         return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN], true);
     }
 
-    // ------------------------------------------------------------------
-    // Multi-comptes
-    // ------------------------------------------------------------------
+    public static function maximumComptes(): int
+    {
+        return max(1, (int) config('multi_comptes.maximum', 3));
+    }
 
     public function estProfilRattache(): bool
     {
         return $this->compte_principal_id !== null;
     }
 
-    /** Compte qui porte la connexion : lui-même, ou celui auquel il est rattaché. */
+    public function estArchive(): bool
+    {
+        return $this->archive_at !== null;
+    }
+
     public function comptePrincipal(): BelongsTo
     {
         return $this->belongsTo(self::class, 'compte_principal_id');
@@ -132,11 +114,6 @@ class User extends Authenticatable
         return $principal ?? $this;
     }
 
-    /**
-     * Tous les comptes de la personne, compte principal compris.
-     *
-     * @return Builder<self>
-     */
     public function famille(): Builder
     {
         $principal = $this->compte_principal_id ?? $this->id;
@@ -145,15 +122,15 @@ class User extends Authenticatable
             ->where(fn (Builder $r) => $r->whereKey($principal)->orWhere('compte_principal_id', $principal));
     }
 
-    /** Les comptes qui servent à se connecter : jamais un profil rattaché. */
+    public function familleActive(): Builder
+    {
+        return $this->famille()->whereNull('archive_at');
+    }
+
     public function scopePrincipaux(Builder $requete): Builder
     {
         return $requete->whereNull('compte_principal_id');
     }
-
-    // ------------------------------------------------------------------
-    // Relations
-    // ------------------------------------------------------------------
 
     public function artisan(): HasOne
     {
@@ -228,10 +205,6 @@ class User extends Authenticatable
         return $this->hasOne(VerificationIdentite::class)->latestOfMany();
     }
 
-    /**
-     * 👇 Relation customisée qui pointe vers 'artisan_id'
-     * (puisque la table notifications utilise cette colonne).
-     */
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class, 'artisan_id');

@@ -204,16 +204,17 @@ class MultiComptesTest extends TestCase
         $this->assertSame(User::STATUT_ACTIF, $principal->fresh()->statut);
     }
 
-    public function test_supprimer_le_compte_principal_emporte_ses_profils(): void
+    public function test_le_compte_principal_reste_tant_qu_un_compte_lui_est_rattache(): void
     {
         $principal = $this->artisanPrincipal();
         [$profil] = $this->ajouterProfil($principal, 'Profil 2');
 
         Sanctum::actingAs($principal);
-        $this->deleteJson('/api/v1/compte', ['password' => 'secret123', 'confirmation' => true])->assertOk();
+        $this->deleteJson('/api/v1/compte', ['password' => 'secret123', 'confirmation' => true])
+            ->assertUnprocessable();
 
-        $this->assertSame(User::STATUT_SUSPENDU, $principal->fresh()->statut);
-        $this->assertSame(User::STATUT_SUSPENDU, $profil->fresh()->statut);
+        $this->assertSame(User::STATUT_ACTIF, $principal->fresh()->statut);
+        $this->assertSame(User::STATUT_ACTIF, $profil->fresh()->statut);
     }
 
     public function test_l_admin_qui_supprime_le_compte_principal_supprime_ses_profils(): void

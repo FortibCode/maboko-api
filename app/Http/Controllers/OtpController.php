@@ -15,7 +15,6 @@ class OtpController extends Controller
 
     public function sendRegisterOtp(Request $request): JsonResponse
     {
-        // 👇 On récupère le drapeau envoyé par l'application
         $estAjoutCompte = $request->boolean('est_ajout_compte');
 
         $regles = [
@@ -25,9 +24,7 @@ class OtpController extends Controller
             'role' => ['sometimes', 'string', Rule::in(User::ROLES)],
         ];
 
-        // 👇 La règle d'unicité change selon le contexte
         if ($estAjoutCompte) {
-            // Si on ajoute un compte, on limite juste à 3 comptes max par email/tel
             $regles['email'] = 'required|email|max:255';
             
             $emailCount = User::where('email', $request->email)->count();
@@ -39,7 +36,6 @@ class OtpController extends Controller
                 ], 422);
             }
         } else {
-            // Si c'est une inscription classique, on garde l'unicité stricte
             $regles['email'] = 'required|email|max:255|unique:users,email';
             $regles['telephone'][] = 'unique:users,telephone';
         }
@@ -77,6 +73,18 @@ class OtpController extends Controller
             'is_verified' => true,
         ]);
 
+        // 👇 GÉNÉRATION DU MATRICULE 👇
+        $prefixe = match ($user->role) {
+            User::ROLE_ARTISAN => 'MBK-ART',
+            User::ROLE_CHAUFFEUR => 'MBK-CHA',
+            User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN => 'MBK-ADM',
+            default => 'MBK-CLI',
+        };
+        $user->update([
+            'matricule' => $prefixe . '-' . str_pad($user->id, 5, '0', STR_PAD_LEFT),
+        ]);
+        // 👆 FIN GÉNÉRATION 👆
+
         if ($user->role === User::ROLE_ARTISAN) {
             $ville = $user->ville ?? 'Brazzaville';
 
@@ -100,7 +108,7 @@ class OtpController extends Controller
         return response()->json([
             'message' => 'Compte créé avec succès.',
             'token' => $token,
-            'user' => $user,
+            'user' => $user->fresh(), // On renvoie le user avec le matricule
         ], 201);
     }
 

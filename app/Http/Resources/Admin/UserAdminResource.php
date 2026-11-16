@@ -28,6 +28,7 @@ class UserAdminResource extends JsonResource
             // Multi-comptes : un profil rattaché partage le téléphone et l'email
             // de son compte principal.
             'comptePrincipalId' => $this->resource->compte_principal_id,
+            'archive' => $this->resource->archive_at !== null,
             'isVerified' => (bool) $this->resource->is_verified,
             'avatarUrl' => $this->resource->avatar_url,
             'ville' => $this->resource->ville,

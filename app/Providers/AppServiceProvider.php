@@ -6,7 +6,9 @@ use App\Models\Artisan;
 use App\Models\Conversation;
 use App\Models\Course;
 use App\Models\DemandeDevis;
+use App\Models\User;
 use App\Policies\ArtisanPolicy;
+use App\Policies\ComptePolicy;
 use App\Policies\ConversationPolicy;
 use App\Policies\CoursePolicy;
 use App\Policies\DemandeDevisPolicy;
@@ -73,6 +75,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Artisan::class, ArtisanPolicy::class);
         Gate::policy(Conversation::class, ConversationPolicy::class);
         Gate::policy(Course::class, CoursePolicy::class);
+        Gate::policy(User::class, ComptePolicy::class);
     }
 
     /**
