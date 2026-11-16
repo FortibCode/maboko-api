@@ -17,6 +17,7 @@ class UserAdminResource extends JsonResource
     {
         return [
             'id' => $this->resource->id,
+            'matricule' => $this->resource->matricule,
             'nom' => $this->resource->nom,
             'prenom' => $this->resource->prenom,
             'nomComplet' => trim(($this->resource->prenom ?? '').' '.$this->resource->nom),

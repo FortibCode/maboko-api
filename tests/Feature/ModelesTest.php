@@ -34,6 +34,8 @@ class ModelesTest extends TestCase
     private const EXCEPTIONS = [
         // Compteurs : modifies par increment(), jamais par le formulaire.
         'App\\Models\\Publicite' => ['nb_affichages', 'nb_clics'],
+        // Attribué une fois pour toutes à la création du compte (User::booted).
+        'App\\Models\\User' => ['matricule'],
     ];
 
     public function test_chaque_colonne_est_assignable_ou_explicitement_exclue(): void
