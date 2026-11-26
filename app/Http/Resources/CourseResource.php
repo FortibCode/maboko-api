@@ -15,7 +15,7 @@ class CourseResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $chauffeur = $this->resource->chauffeur;
+        $chauffeur = $this->resource->chauffeur ?? $this->resource->chauffeurPropose;
 
         return [
             'id' => $this->resource->id,

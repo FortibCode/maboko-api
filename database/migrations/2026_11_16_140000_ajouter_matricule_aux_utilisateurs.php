@@ -16,24 +16,36 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('matricule', 32)->nullable()->unique()->after('id');
-        });
+        if (! Schema::hasColumn('users', 'matricule')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->string('matricule', 32)->nullable()->after('id');
+            });
+        }
 
-        DB::table('users')->select(['id', 'role'])->orderBy('id')->chunkById(500, function ($comptes) {
-            foreach ($comptes as $compte) {
-                DB::table('users')->where('id', $compte->id)->update([
-                    'matricule' => User::matriculePour($compte->id, $compte->role),
-                ]);
-            }
-        });
+        // Index unique créé uniquement s'il n'existe pas déjà (PostgreSQL).
+        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS users_matricule_unique ON users (matricule)');
+
+        DB::table('users')
+            ->select(['id', 'role'])
+            ->whereNull('matricule')
+            ->orderBy('id')
+            ->chunkById(500, function ($comptes) {
+                foreach ($comptes as $compte) {
+                    DB::table('users')->where('id', $compte->id)->update([
+                        'matricule' => User::matriculePour($compte->id, $compte->role),
+                    ]);
+                }
+            });
     }
 
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropUnique(['matricule']);
-            $table->dropColumn('matricule');
-        });
+        DB::statement('DROP INDEX IF EXISTS users_matricule_unique');
+
+        if (Schema::hasColumn('users', 'matricule')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('matricule');
+            });
+        }
     }
 };
