@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Artisan;
+use App\Models\Publicite;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -34,6 +35,7 @@ class ArtisanResource extends JsonResource
 
             'localProfessionnel' => $this->resource->local_professionnel,
             'plan' => $this->whenLoaded('abonnementActif', fn () => $this->resource->abonnementActif?->plan?->slug),
+            'estSponsorise' => (bool) Publicite::enCours()->where('artisan_id', $this->resource->utilisateur_id)->exists(),
 
             // Presente uniquement sur une recherche geolocalisee.
             'distanceKm' => $this->when(

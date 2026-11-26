@@ -15,6 +15,19 @@ class PubliciteResource extends JsonResource
         $artisan = $this->artisan;
         $fiche = $artisan?->artisan;
 
+        $statut = 'desactivee';
+        if ($this->actif && $this->date_fin && $this->date_fin->isFuture()) {
+            $statut = 'active';
+        } elseif (! $this->actif && $this->date_debut === null) {
+            $statut = 'en_attente';
+        } elseif ($this->date_fin && $this->date_fin->isPast()) {
+            $statut = 'terminee';
+        }
+
+        $joursRestants = ($this->actif && $this->date_fin && $this->date_fin->isFuture())
+            ? (int) (now()->diffInDays($this->date_fin) + 1)
+            : 0;
+
         return [
             'id' => $this->id,
             'titre' => $this->titre,
@@ -33,12 +46,14 @@ class PubliciteResource extends JsonResource
             'noteMoyenne' => (float) ($fiche?->note_moyenne ?? 0),
             'nbMissionsTerminees' => $fiche?->nb_missions_terminees ?? 0,
 
-            // Fenêtre et état (utile pour l'admin).
+            // Fenêtre et état.
+            'statut' => $statut,
+            'joursRestants' => $joursRestants,
             'dateDebut' => $this->date_debut?->toIso8601String(),
             'dateFin' => $this->date_fin?->toIso8601String(),
             'actif' => (bool) $this->actif,
-            'nbAffichages' => $this->nb_affichages,
-            'nbClics' => $this->nb_clics,
+            'nbAffichages' => (int) $this->nb_affichages,
+            'nbClics' => (int) $this->nb_clics,
             'creeLe' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -113,6 +113,8 @@ Route::prefix('v1')->group(function () {
         // Publicités
         Route::get('/publicite/active', [PubliciteController::class, 'active']);
         Route::post('/publicite/{publicite}/clic', [PubliciteController::class, 'clic']);
+        Route::get('/artisan/publicites', [PubliciteController::class, 'mesPublicites']);
+        Route::post('/artisan/publicites', [PubliciteController::class, 'creerCampagne']);
 
         // Demandes de devis
         Route::get('/demandes', [DemandeDevisController::class, 'index']);
@@ -204,6 +206,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/publicites', [PubliciteController::class, 'index']);
             Route::post('/publicites', [PubliciteController::class, 'store']);
             Route::patch('/publicites/{publicite}', [PubliciteController::class, 'update']);
+            Route::post('/publicites/{publicite}/valider', [PubliciteController::class, 'valider']);
+            Route::post('/publicites/{publicite}/refuser', [PubliciteController::class, 'refuser']);
             Route::post('/publicites/{publicite}/activation', [PubliciteController::class, 'basculerActivation']);
             Route::delete('/publicites/{publicite}', [PubliciteController::class, 'destroy']);
 

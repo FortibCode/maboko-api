@@ -8,6 +8,7 @@ use App\Http\Resources\ArtisanResource;
 use App\Http\Resources\AvisResource;
 use App\Models\Artisan;
 use App\Models\Metier;
+use App\Models\Publicite;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -72,6 +73,13 @@ class ArtisanController extends Controller
         // Le tri par distance n'a de sens qu'avec des coordonnées ; il est
         // déjà appliqué par le scope, on n'y touche pas.
         $tri = $filtres['tri'] ?? ($geolocalisee ? 'distance' : 'pertinence');
+
+        // Les artisans ayant une publicité active (sponsorisés) sont propulsés en haut de liste
+        $idsSponsorises = Publicite::enCours()->pluck('artisan_id')->filter()->all();
+        if (! empty($idsSponsorises) && $tri !== 'distance') {
+            $idsSql = implode(',', array_map('intval', $idsSponsorises));
+            $requete->orderByRaw("CASE WHEN utilisateur_id IN ($idsSql) THEN 0 ELSE 1 END");
+        }
 
         match ($tri) {
             'note' => $requete->orderByDesc('note_moyenne')->orderByDesc('nb_avis'),
