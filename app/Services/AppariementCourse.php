@@ -87,4 +87,3 @@ class AppariementCourse
         return round($rayonTerre * 2 * atan2(sqrt($a), sqrt(1 - $a)), 1);
     }
 }
-

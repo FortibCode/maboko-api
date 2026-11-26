@@ -26,10 +26,10 @@ class OtpController extends Controller
 
         if ($estAjoutCompte) {
             $regles['email'] = 'required|email|max:255';
-            
+
             $emailCount = User::where('email', $request->email)->count();
             $telCount = User::where('telephone', $request->telephone)->count();
-            
+
             if ($emailCount >= 3 || $telCount >= 3) {
                 return response()->json([
                     'message' => 'Ce numéro ou cet email est déjà associé à 3 comptes maximum.',
@@ -81,7 +81,7 @@ class OtpController extends Controller
             default => 'MBK-CLI',
         };
         $user->update([
-            'matricule' => $prefixe . '-' . str_pad($user->id, 5, '0', STR_PAD_LEFT),
+            'matricule' => $prefixe.'-'.str_pad($user->id, 5, '0', STR_PAD_LEFT),
         ]);
         // 👆 FIN GÉNÉRATION 👆
 

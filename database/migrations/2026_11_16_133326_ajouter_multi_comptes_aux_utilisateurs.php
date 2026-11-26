@@ -15,7 +15,7 @@ return new class extends Migration
 
         // 2. On ajoute la colonne pour le multi-compte si elle n'existe pas
         Schema::table('users', function (Blueprint $table) {
-            if (!Schema::hasColumn('users', 'compte_principal_id')) {
+            if (! Schema::hasColumn('users', 'compte_principal_id')) {
                 $table->foreignId('compte_principal_id')
                     ->nullable()
                     ->after('id')

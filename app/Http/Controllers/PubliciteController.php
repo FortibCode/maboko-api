@@ -244,7 +244,8 @@ class PubliciteController extends Controller
         if (! empty($donnees['image'])) {
             try {
                 $imageUrl = $this->media->enregistrerImage($donnees['image'], 'publicites');
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+            }
         }
 
         $publicite = Publicite::create([

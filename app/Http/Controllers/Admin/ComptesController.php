@@ -331,13 +331,15 @@ class ComptesController extends Controller
 
                 try {
                     DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-                } catch (\Throwable) {}
+                } catch (\Throwable) {
+                }
 
                 $utilisateur->forceDelete();
 
                 try {
                     DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-                } catch (\Throwable) {}
+                } catch (\Throwable) {
+                }
             });
         } catch (\Throwable $e) {
             Log::error("Erreur de suppression pour l'utilisateur {$utilisateurId} : ".$e->getMessage());

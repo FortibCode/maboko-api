@@ -487,4 +487,3 @@ class CourseController extends Controller
         return Chauffeur::where('utilisateur_id', $request->user()->id)->first();
     }
 }
-

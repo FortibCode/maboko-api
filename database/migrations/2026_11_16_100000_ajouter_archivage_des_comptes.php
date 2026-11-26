@@ -16,14 +16,14 @@ return new class extends Migration
         DB::statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_telephone_unique');
 
         // Ajout de la colonne compte_principal_id si elle n'existe pas
-        if (!Schema::hasColumn('users', 'compte_principal_id')) {
+        if (! Schema::hasColumn('users', 'compte_principal_id')) {
             Schema::table('users', function (Blueprint $table) {
                 $table->foreignId('compte_principal_id')->nullable()->constrained('users')->nullOnDelete();
             });
         }
 
         // Ajout de la colonne archive_at si elle n'existe pas
-        if (!Schema::hasColumn('users', 'archive_at')) {
+        if (! Schema::hasColumn('users', 'archive_at')) {
             Schema::table('users', function (Blueprint $table) {
                 $table->timestamp('archive_at')->nullable();
             });
